@@ -29,7 +29,7 @@ POSTS_PER_RUN_MIN = 3
 POSTS_PER_RUN_MAX = 10
 MAX_STORED_IDS = 1000  # keep posted_ids.json from growing forever
 
-GEMINI_MODEL = "gemini-1.5-flash"
+GEMINI_MODEL = "gemini-2.5-flash"
 GROQ_MODEL = "llama-3.3-70b-versatile"
 GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
 
