@@ -1,4 +1,5 @@
 # bot/commands/payments.py
+import logging
 import os
 import time
 import db.client as db
@@ -13,10 +14,12 @@ def send_invoice(user_id: int, tier: str) -> None:
         price = int(os.environ.get("STARS_ONETIME_PRICE", "200"))
         title = "NewsBot — One-time Upgrade"
         description = "Unlock 6 themes, 1 custom theme, per-theme schedules. Yours forever."
-    else:
+    elif tier == "monthly":
         price = int(os.environ.get("STARS_MONTHLY_PRICE", "100"))
         title = "NewsBot — Monthly Subscription"
         description = "Unlock all features: 9 themes, 3 custom themes, digest history."
+    else:
+        raise ValueError(f"Unknown tier: {tier!r}")
 
     tg.send_invoice(
         chat_id=user_id,
@@ -32,7 +35,7 @@ def handle_successful_payment(message: dict) -> None:
     user_id = message["from"]["id"]
     payment = message["successful_payment"]
     payload = payment["invoice_payload"]  # e.g. "tier:one_time"
-    tier = payload.split(":")[1]
+    tier = payload.split(":", 1)[1]
     amount = payment["total_amount"]
     now = int(time.time())
 
@@ -59,4 +62,12 @@ def handle_successful_payment(message: dict) -> None:
         tg.send_message(
             chat_id=user_id,
             text="🎉 *Monthly subscription activated!* All features unlocked for 30 days.",
+        )
+    else:
+        logging.error(
+            "handle_successful_payment: unknown tier %r in payload %r", tier, payload
+        )
+        tg.send_message(
+            chat_id=user_id,
+            text="⚠️ Payment received but could not be processed. Please contact support.",
         )

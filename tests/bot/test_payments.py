@@ -73,3 +73,49 @@ def test_send_invoice_monthly_uses_xtr_currency(mock_send_invoice):
     call_kwargs = mock_send_invoice.call_args[1]
     assert call_kwargs["currency"] == "XTR"
     assert call_kwargs["payload"] == "tier:monthly"
+
+
+@patch("bot.commands.upgrade.tg.send_message")
+@patch("bot.commands.upgrade.db.execute", return_value=[{"tier": "one_time"}])
+def test_upgrade_handle_one_time_tier_shows_monthly_button(mock_execute, mock_send):
+    from bot.commands.upgrade import handle
+    handle({"from": {"id": 1}, "chat": {"id": 1}})
+    assert mock_send.called
+    call_kwargs = mock_send.call_args[1]
+    markup = call_kwargs.get("reply_markup")
+    assert markup is not None, "Expected an inline keyboard for one_time tier"
+    buttons = markup["inline_keyboard"]
+    assert len(buttons) == 1, "Expected exactly one button row for one_time tier"
+    assert buttons[0][0]["callback_data"] == "pay:monthly"
+
+
+@patch("bot.commands.upgrade.tg.send_message")
+@patch("bot.commands.upgrade.db.execute", return_value=[{"tier": "monthly"}])
+def test_upgrade_handle_monthly_tier_shows_no_buttons_and_confirmation(mock_execute, mock_send):
+    from bot.commands.upgrade import handle
+    handle({"from": {"id": 1}, "chat": {"id": 1}})
+    assert mock_send.called
+    call_kwargs = mock_send.call_args[1]
+    text = call_kwargs.get("text", "")
+    assert "Monthly" in text, "Expected confirmation note mentioning Monthly plan"
+    markup = call_kwargs.get("reply_markup")
+    assert markup is None, "Expected no inline keyboard for monthly tier"
+
+
+@patch("bot.commands.payments.tg.send_message")
+@patch("bot.commands.payments.db.execute_many")
+def test_handle_successful_payment_unknown_tier_sends_error(mock_execute_many, mock_send):
+    from bot.commands.payments import handle_successful_payment
+    handle_successful_payment({
+        "from": {"id": 1},
+        "chat": {"id": 1},
+        "successful_payment": {
+            "invoice_payload": "tier:unknown_tier",
+            "total_amount": 50,
+            "currency": "XTR",
+        }
+    })
+    assert not mock_execute_many.called, "DB should not be updated for unknown tier"
+    assert mock_send.called, "Error message should be sent to user"
+    text = mock_send.call_args[1].get("text", "") or mock_send.call_args[0][1]
+    assert "contact support" in text.lower() or "⚠️" in text
