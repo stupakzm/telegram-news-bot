@@ -1,3 +1,4 @@
+# delivery/main.py
 """
 Main delivery orchestrator. Called by GitHub Actions every hour.
 Usage: python -m delivery.main
@@ -7,7 +8,7 @@ import time
 from datetime import datetime, timezone
 
 from dotenv import load_dotenv
-load_dotenv()
+load_dotenv()  # load env BEFORE project imports that may read env at import time
 
 import db.client as db
 from delivery.scheduler import get_due_deliveries, group_by_theme, check_expiry_reminders
@@ -62,6 +63,12 @@ def run():
     print(f"[deliver] {len(groups)} unique theme(s) to process for {len(deliveries)} delivery row(s)")
 
     all_posted_urls: list[str] = []
+    # track actual articles sent per group for digest history
+    group_theme_info: dict[tuple, dict] = {}
+    group_sent_articles: dict[tuple, list[dict]] = {}
+
+    now_ts = int(time.time())
+    cutoff_ts = now_ts - 24 * 3600  # only check recently posted URLs for dedup
 
     for (theme_type, theme_id), users in groups.items():
         theme = get_theme_info(theme_type, theme_id)
@@ -69,27 +76,41 @@ def run():
             print(f"[deliver] Theme ({theme_type}, {theme_id}) not found — skipping")
             continue
 
+        group_theme_info[(theme_type, theme_id)] = theme
+
         # Step 3: cache check
         articles = theme_cache.get_cached(theme_type, theme_id, date_str, quarter)
 
         if articles is None:
             # Cache miss: fetch + summarize
-            raw_articles = fetch_articles(theme)
-            if not raw_articles:
-                print(f"[deliver] No new articles for {theme['name']}")
-                continue
-            articles = summarize_articles(raw_articles, theme["hashtag"])
-            if not articles:
-                print(f"[deliver] AI returned no summaries for {theme['name']}")
+            try:
+                raw_articles = fetch_articles(theme)
+                if not raw_articles:
+                    print(f"[deliver] No new articles for {theme['name']}")
+                    continue
+                articles = summarize_articles(raw_articles, theme["hashtag"])
+                if not articles:
+                    print(f"[deliver] AI returned no summaries for {theme['name']}")
+                    continue
+            except Exception as e:
+                print(f"[deliver] Error fetching/summarizing {theme['name']}: {e}")
                 continue
             # Cache the result
             theme_cache.set_cache(theme_type, theme_id, date_str, quarter, articles)
         else:
-            # Cache hit: still filter against posted_articles
-            posted = {row["url"] for row in db.execute("SELECT url FROM posted_articles")}
+            # Cache hit: re-filter against recent posted_articles
+            posted = {
+                row["url"]
+                for row in db.execute(
+                    "SELECT url FROM posted_articles WHERE posted_at > ?", [cutoff_ts]
+                )
+            }
             articles = [a for a in articles if a["url"] not in posted]
 
         # Step 4: fan out to each user
+        # Collect the canonical sent list for this group (same for all users, sliced per-user)
+        group_sent_articles[(theme_type, theme_id)] = articles
+
         for user in users:
             user_articles = articles[:user["effective_articles_per_theme"]]
             for article in user_articles:
@@ -100,39 +121,39 @@ def run():
                 except Exception as e:
                     print(f"[deliver] Failed to post to user {user['user_id']}: {e}")
 
-    # Step 5: mark URLs as posted (global dedup) — must run before digest_history
+    # Step 5: mark URLs as posted (global dedup)
     if all_posted_urls:
-        now_ts = int(time.time())
         statements = [
             ("INSERT OR IGNORE INTO posted_articles (url, posted_at) VALUES (?, ?)", [url, now_ts])
             for url in set(all_posted_urls)
         ]
         db.execute_many(statements)
 
-    # Step 6: digest history for monthly users
+    # Step 6: digest history for monthly users (batch per group)
     for (theme_type, theme_id), users in groups.items():
-        theme = get_theme_info(theme_type, theme_id)
-        if not theme:
+        theme = group_theme_info.get((theme_type, theme_id))
+        articles = group_sent_articles.get((theme_type, theme_id))
+        if not theme or not articles:
             continue
-        cached = theme_cache.get_cached(theme_type, theme_id, date_str, quarter)
-        if not cached:
-            continue
+
+        digest_statements = []
         for user in users:
             if user.get("effective_tier") != "monthly":
                 continue
-            user_articles = cached[:user["effective_articles_per_theme"]]
+            user_articles = articles[:user["effective_articles_per_theme"]]
+            digest_statements.append((
+                "INSERT INTO digest_history "
+                "(user_id, theme_type, theme_id, theme_name, articles, sent_at) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                [user["user_id"], theme_type, theme_id,
+                 theme["name"], json.dumps(user_articles), now_ts],
+            ))
+
+        if digest_statements:
             try:
-                db.execute_many([
-                    (
-                        "INSERT INTO digest_history "
-                        "(user_id, theme_type, theme_id, theme_name, articles, sent_at) "
-                        "VALUES (?, ?, ?, ?, ?, ?)",
-                        [user["user_id"], theme_type, theme_id,
-                         theme["name"], json.dumps(user_articles), int(time.time())],
-                    )
-                ])
+                db.execute_many(digest_statements)
             except Exception as e:
-                print(f"[deliver] Failed to write history for user {user['user_id']}: {e}")
+                print(f"[deliver] Failed to write history for theme ({theme_type}, {theme_id}): {e}")
 
     # Step 7: expiry reminders
     check_expiry_reminders()
