@@ -43,7 +43,7 @@ def add_theme(user_id: int, theme_type: str, theme_id: int) -> bool:
         )
         return False
 
-    articles = 1 if tier == "free" else 2
+    articles = 2 if tier == "monthly" else 1
     db.execute_many([
         (
             "INSERT INTO user_themes (user_id, theme_type, theme_id, articles_per_theme) "
@@ -86,6 +86,13 @@ def handle(message: dict) -> None:
             "text": label,
             "callback_data": f"themes:{action}:default:{t['id']}",
         }])
+
+    # Third DB call: get user's tier for paid-tier custom theme buttons
+    tier_rows = db.execute("SELECT tier FROM users WHERE user_id = ?", [user_id])
+    tier = tier_rows[0].get("tier", "free") if tier_rows else "free"
+    if tier in ("one_time", "monthly"):
+        buttons.append([{"text": "➕ Add Custom Theme (AI)", "callback_data": "addtheme:ai"}])
+        buttons.append([{"text": "➕ Add Custom Theme (Manual)", "callback_data": "addtheme:manual"}])
 
     tg.send_message(
         chat_id=chat_id,

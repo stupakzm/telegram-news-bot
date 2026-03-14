@@ -15,7 +15,7 @@ USER_THEMES = [{"theme_type": "default", "theme_id": 1}]
 
 
 @patch("bot.commands.themes.tg.send_message")
-@patch("bot.commands.themes.db.execute", side_effect=[ALL_THEMES, USER_THEMES])
+@patch("bot.commands.themes.db.execute", side_effect=[ALL_THEMES, USER_THEMES, [{"tier": "free"}]])
 def test_themes_shows_active_themes(mock_execute, mock_send):
     from bot.commands.themes import handle
     handle({"from": {"id": 1}, "chat": {"id": 1}})
