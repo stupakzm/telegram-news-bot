@@ -27,7 +27,7 @@ def _handle_callback(callback_query: dict) -> None:
         _, _, theme_type, theme_id = data.split(":")
         themes.remove_theme(user_id, theme_type, int(theme_id))
     elif data.startswith("pay:"):
-        tier = data.split(":")[1]
+        tier = data.split(":", 1)[1]
         payments_cmd.send_invoice(user_id, tier)
     elif data.startswith("upgrade:show"):
         upgrade.handle({"from": callback_query["from"], "chat": {"id": user_id}})
