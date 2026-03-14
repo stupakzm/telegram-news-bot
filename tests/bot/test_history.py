@@ -12,7 +12,7 @@ def _msg(user_id=1):
 
 
 @patch("bot.commands.history.tg.send_message")
-@patch("bot.commands.history.db.execute", return_value=[{"tier": "free"}])
+@patch("bot.commands.history.db.execute", return_value=[{"tier": "free", "tier_expires_at": None}])
 def test_history_blocked_for_free_users(mock_execute, mock_send):
     from bot.commands.history import handle
     handle(_msg())
@@ -21,7 +21,7 @@ def test_history_blocked_for_free_users(mock_execute, mock_send):
 
 
 @patch("bot.commands.history.tg.send_message")
-@patch("bot.commands.history.db.execute", return_value=[{"tier": "one_time"}])
+@patch("bot.commands.history.db.execute", return_value=[{"tier": "one_time", "tier_expires_at": None}])
 def test_history_blocked_for_one_time_users(mock_execute, mock_send):
     from bot.commands.history import handle
     handle(_msg())
@@ -32,8 +32,8 @@ def test_history_blocked_for_one_time_users(mock_execute, mock_send):
 
 @patch("bot.commands.history.tg.send_message")
 @patch("bot.commands.history.db.execute", side_effect=[
-    [{"tier": "monthly"}],  # user query
-    [],                      # history query returns empty
+    [{"tier": "monthly", "tier_expires_at": None}],  # user query
+    [],                                               # history query returns empty
 ])
 def test_history_empty_message_for_monthly_with_no_history(mock_execute, mock_send):
     from bot.commands.history import handle
@@ -44,7 +44,7 @@ def test_history_empty_message_for_monthly_with_no_history(mock_execute, mock_se
 
 @patch("bot.commands.history.tg.send_message")
 @patch("bot.commands.history.db.execute", side_effect=[
-    [{"tier": "monthly"}],
+    [{"tier": "monthly", "tier_expires_at": None}],
     [{"theme_name": "AI", "articles": json.dumps([{"title": "Test Article"}]), "sent_at": 1700000000}],
 ])
 def test_history_shows_entries_for_monthly(mock_execute, mock_send):

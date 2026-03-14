@@ -10,7 +10,11 @@ def fetch_articles(theme: dict) -> list[dict]:
 
     theme dict keys: id, theme_type, name, hashtag, rss_feeds (list of URLs)
     """
-    posted = {row["url"] for row in db.execute("SELECT url FROM posted_articles")}
+    import time as _time
+    cutoff = int(_time.time()) - 24 * 3600
+    posted = {row["url"] for row in db.execute(
+        "SELECT url FROM posted_articles WHERE posted_at > ?", [cutoff]
+    )}
     articles = []
 
     for feed_url in theme["rss_feeds"]:

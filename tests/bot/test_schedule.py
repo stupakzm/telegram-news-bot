@@ -8,8 +8,9 @@ os.environ.setdefault("TELEGRAM_BOT_TOKEN", "test-token")
 
 
 @patch("bot.commands.schedule.tg.send_message")
+@patch("bot.commands.schedule.db.execute_many")
 @patch("bot.commands.schedule.db.execute", return_value=[{"tier": "free"}])
-def test_schedule_shows_day_picker(mock_execute, mock_send):
+def test_schedule_shows_day_picker(mock_execute, mock_execute_many, mock_send):
     from bot.commands.schedule import handle
     handle({"from": {"id": 1}, "chat": {"id": 1}})
     assert mock_send.called
@@ -17,6 +18,7 @@ def test_schedule_shows_day_picker(mock_execute, mock_send):
     flat_buttons = [b for row in markup.get("inline_keyboard", []) for b in row]
     labels = [b["text"] for b in flat_buttons]
     assert any("Mon" in l or "Tue" in l for l in labels)
+    assert mock_execute_many.called
 
 
 @patch("bot.commands.schedule.tg.send_message")

@@ -10,8 +10,15 @@ MAX_HISTORY = 30
 def handle(message: dict) -> None:
     user_id = message["from"]["id"]
 
-    rows = db.execute("SELECT tier FROM users WHERE user_id = ?", [user_id])
+    import time as _time
+
+    rows = db.execute("SELECT tier, tier_expires_at FROM users WHERE user_id = ?", [user_id])
     tier = rows[0]["tier"] if rows else "free"
+    expires = rows[0]["tier_expires_at"] if rows else None
+
+    # Downgrade expired monthly
+    if tier == "monthly" and expires and int(_time.time()) > expires:
+        tier = "free"
 
     if tier != "monthly":
         if tier == "one_time":

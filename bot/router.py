@@ -40,6 +40,15 @@ def _handle_callback(callback_query: dict) -> None:
         addtheme.toggle_feed(user_id, idx)
     elif data == "addtheme:feeds_done":
         addtheme.feeds_done(user_id)
+    elif data.startswith("schedule:day:"):
+        day_idx = int(data.split(":")[2])
+        schedule.toggle_day(user_id, day_idx)
+    elif data == "schedule:days_done":
+        schedule.days_done(user_id)
+    elif data == "schedule:setup":
+        schedule.handle({"from": callback_query["from"], "chat": {"id": user_id}})
+    elif data == "themes:browse":
+        themes.handle({"from": callback_query["from"], "chat": {"id": user_id}})
     tg.answer_callback_query(callback_query["id"])
 
 
@@ -50,7 +59,17 @@ def _handle_pending_action(message: dict) -> bool:
     )
     if not rows:
         return False
-    addtheme.handle_pending(message, rows[0]["action"], rows[0]["data"])
+    action = rows[0]["action"]
+    data_json = rows[0]["data"]
+    if action.startswith("addtheme_"):
+        addtheme.handle_pending(message, action, data_json)
+    elif action.startswith("schedule_"):
+        schedule.handle_pending(message, action, data_json)
+    else:
+        # Unknown pending action — clear it
+        import logging
+        logging.warning("_handle_pending_action: unknown action %r for user %d", action, user_id)
+        db.execute_many([("DELETE FROM user_pending_actions WHERE user_id = ?", [user_id])])
     return True
 
 

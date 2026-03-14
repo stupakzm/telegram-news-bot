@@ -47,3 +47,100 @@ def handle(message: dict) -> None:
         text += "\n\n💡 _You can also set per-theme schedules after this._"
 
     tg.send_message(chat_id=user_id, text=text, reply_markup={"inline_keyboard": day_buttons})
+    import time as _time
+    db.execute_many([
+        (
+            "INSERT OR REPLACE INTO user_pending_actions (user_id, action, data, created_at) "
+            "VALUES (?, 'schedule_days', ?, ?)",
+            [user_id, json.dumps({"selected": []}), int(_time.time())],
+        )
+    ])
+
+
+def toggle_day(user_id: int, day_idx: int) -> None:
+    """Toggle a day in the pending schedule selection and redraw buttons."""
+    rows = db.execute(
+        "SELECT data FROM user_pending_actions WHERE user_id = ? AND action = 'schedule_days'",
+        [user_id],
+    )
+    if not rows:
+        return
+    data = json.loads(rows[0]["data"])
+    selected: list = data.get("selected", [])
+    if day_idx in selected:
+        selected.remove(day_idx)
+    else:
+        selected.append(day_idx)
+    data["selected"] = selected
+    import time as _time
+    db.execute_many([
+        (
+            "INSERT OR REPLACE INTO user_pending_actions (user_id, action, data, created_at) "
+            "VALUES (?, 'schedule_days', ?, ?)",
+            [user_id, json.dumps(data), int(_time.time())],
+        )
+    ])
+    # Redraw buttons
+    day_buttons = [
+        [{"text": f"{'✅' if i + 1 in selected else ''}{day}", "callback_data": f"schedule:day:{i + 1}"}]
+        for i, day in enumerate(DAYS)
+    ]
+    day_buttons.append([{"text": "✅ Done selecting days", "callback_data": "schedule:days_done"}])
+    tg.send_message(
+        chat_id=user_id,
+        text="Tap days to toggle, then tap Done:",
+        reply_markup={"inline_keyboard": day_buttons},
+    )
+
+
+def days_done(user_id: int) -> None:
+    """User confirmed day selection — ask for hour."""
+    rows = db.execute(
+        "SELECT data FROM user_pending_actions WHERE user_id = ? AND action = 'schedule_days'",
+        [user_id],
+    )
+    if not rows:
+        return
+    data = json.loads(rows[0]["data"])
+    selected = data.get("selected", [])
+    if not selected:
+        tg.send_message(chat_id=user_id, text="⚠️ Please select at least one day.")
+        return
+    # Transition to asking for hour
+    import time as _time
+    db.execute_many([
+        (
+            "INSERT OR REPLACE INTO user_pending_actions (user_id, action, data, created_at) "
+            "VALUES (?, 'schedule_hour', ?, ?)",
+            [user_id, json.dumps(data), int(_time.time())],
+        )
+    ])
+    tg.send_message(
+        chat_id=user_id,
+        text="What hour (UTC) should your digest be delivered? (0–23):",
+    )
+
+
+def handle_pending(message: dict, action: str, data_json: str) -> None:
+    """Handle schedule multi-step pending actions."""
+    user_id = message["from"]["id"]
+    text = message.get("text", "").strip()
+    data = json.loads(data_json or "{}")
+
+    if action == "schedule_hour":
+        try:
+            hour = int(text)
+            if not (0 <= hour <= 23):
+                raise ValueError
+        except ValueError:
+            tg.send_message(chat_id=user_id, text="⚠️ Please send a number between 0 and 23.")
+            return
+        days = data.get("selected", [])
+        set_global_schedule(user_id, days, hour)
+        # Clear pending
+        db.execute_many([("DELETE FROM user_pending_actions WHERE user_id = ?", [user_id])])
+        day_names = [DAYS[d - 1] for d in days]
+        tg.send_message(
+            chat_id=user_id,
+            text=f"✅ Schedule set: {', '.join(day_names)} at {hour:02d}:00 UTC.",
+        )

@@ -5,7 +5,7 @@ import requests
 import google.generativeai as genai
 
 GEMINI_PRIMARY = "gemini-2.5-flash"
-GEMINI_FALLBACK = "gemini-3.5-flash"
+GEMINI_FALLBACK = "gemini-2.0-flash"
 GROQ_MODEL = "llama-3.3-70b-versatile"
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 
