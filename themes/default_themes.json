@@ -1,0 +1,50 @@
+[
+  {
+    "name": "Technology",
+    "hashtag": "#tech",
+    "rss_feeds": [
+      "https://techcrunch.com/feed/",
+      "https://www.theverge.com/rss/index.xml"
+    ]
+  },
+  {
+    "name": "Artificial Intelligence",
+    "hashtag": "#ai",
+    "rss_feeds": [
+      "https://venturebeat.com/category/ai/feed/",
+      "https://www.technologyreview.com/feed/"
+    ]
+  },
+  {
+    "name": "Privacy & Security",
+    "hashtag": "#privacy",
+    "rss_feeds": [
+      "https://www.eff.org/rss/updates.xml",
+      "https://www.wired.com/feed/category/security/latest/rss"
+    ]
+  },
+  {
+    "name": "Software Development",
+    "hashtag": "#software",
+    "rss_feeds": [
+      "https://www.infoq.com/feed/",
+      "https://news.ycombinator.com/rss"
+    ]
+  },
+  {
+    "name": "Tech Companies",
+    "hashtag": "#techcompanies",
+    "rss_feeds": [
+      "https://feeds.reuters.com/reuters/technologyNews",
+      "https://feeds.bloomberg.com/technology/news.rss"
+    ]
+  },
+  {
+    "name": "Hardware",
+    "hashtag": "#hardware",
+    "rss_feeds": [
+      "https://www.anandtech.com/rss/",
+      "https://www.tomshardware.com/feeds/all"
+    ]
+  }
+]
