@@ -1,5 +1,6 @@
 import os
 import time
+import logging
 import requests
 import db.client as db
 
@@ -56,7 +57,7 @@ def group_by_theme(deliveries: list[dict]) -> dict:
     return groups
 
 
-def check_expiry_reminders(hour_utc: int) -> None:
+def check_expiry_reminders() -> None:
     """
     Send renewal reminders to monthly users expiring within 3 days.
     Runs once per hourly cron. Uses last_reminder_at to avoid duplicate sends.
@@ -81,9 +82,9 @@ def check_expiry_reminders(hour_utc: int) -> None:
 
     bot_token = os.environ["TELEGRAM_BOT_TOKEN"]
     for user in users:
-        days_left = max(0, (user["tier_expires_at"] - now) // 86400)
+        days_left = max(1, (user["tier_expires_at"] - now + 86399) // 86400)
         text = (
-            f"Your monthly subscription expires in {days_left} day(s). "
+            f"⏳ Your monthly subscription expires in {days_left} day(s). "
             f"Use /upgrade to renew and keep your personalized feed."
         )
         try:
@@ -92,9 +93,13 @@ def check_expiry_reminders(hour_utc: int) -> None:
                 json={"chat_id": user["user_id"], "text": text},
                 timeout=10,
             )
+        except Exception as e:
+            logging.warning("Failed to send expiry reminder to user %s: %s", user["user_id"], e)
+            continue  # don't update DB if send failed
+        try:
             db.execute_many([
                 ("UPDATE users SET last_reminder_at = ? WHERE user_id = ?",
                  [now, user["user_id"]])
             ])
-        except Exception:
-            continue
+        except Exception as e:
+            logging.warning("Failed to update last_reminder_at for user %s: %s", user["user_id"], e)

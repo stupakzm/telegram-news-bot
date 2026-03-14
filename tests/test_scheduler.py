@@ -66,7 +66,7 @@ def test_check_expiry_reminders_sends_message_and_updates_db(mock_execute, mock_
     mock_post.return_value = MagicMock()
 
     from delivery.scheduler import check_expiry_reminders
-    check_expiry_reminders(hour_utc=9)
+    check_expiry_reminders()
 
     assert mock_post.called
     assert mock_execute_many.called
