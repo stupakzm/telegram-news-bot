@@ -37,7 +37,8 @@ CREATE TABLE IF NOT EXISTS user_schedules (
     user_id       INTEGER NOT NULL REFERENCES users(user_id),
     user_theme_id INTEGER REFERENCES user_themes(id),  -- NULL = global schedule (free tier)
     days          TEXT    NOT NULL,                     -- JSON array e.g. [1,3,5] (1=Mon...7=Sun)
-    hour_utc      INTEGER NOT NULL                      -- 0-23
+    hour_utc      INTEGER NOT NULL,                     -- 0-23
+    UNIQUE (user_id, user_theme_id)
 );
 
 CREATE TABLE IF NOT EXISTS digest_history (
@@ -49,6 +50,9 @@ CREATE TABLE IF NOT EXISTS digest_history (
     articles   TEXT    NOT NULL,  -- JSON array of article summaries
     sent_at    INTEGER NOT NULL
 );
+
+CREATE INDEX IF NOT EXISTS idx_digest_history_user_date
+    ON digest_history(user_id, sent_at DESC);
 
 CREATE TABLE IF NOT EXISTS posted_articles (
     url       TEXT    PRIMARY KEY,
