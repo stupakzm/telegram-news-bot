@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import requests
 import google.generativeai as genai
@@ -40,8 +41,16 @@ def _parse_response(text: str) -> list[dict]:
     return json.loads(text)
 
 
+def _configure_genai() -> None:
+    key = os.environ.get("GEMINI_API_KEY")
+    if key:
+        genai.configure(api_key=key)
+
+
+_configure_genai()
+
+
 def _call_gemini(prompt: str, model_name: str) -> list[dict]:
-    genai.configure(api_key=os.environ["GEMINI_API_KEY"])
     model = genai.GenerativeModel(model_name)
     response = model.generate_content(prompt)
     return _parse_response(response.text)
@@ -73,14 +82,21 @@ def summarize_articles(articles: list[dict], hashtag: str) -> list[dict]:
 
     prompt = _build_prompt(articles, hashtag)
 
-    for attempt in [
+    provider_names = [
+        f"Gemini {GEMINI_PRIMARY}",
+        f"Gemini {GEMINI_FALLBACK}",
+        "Groq",
+    ]
+    attempts = [
         lambda: _call_gemini(prompt, GEMINI_PRIMARY),
         lambda: _call_gemini(prompt, GEMINI_FALLBACK),
         lambda: _call_groq(prompt),
-    ]:
+    ]
+    for name, attempt in zip(provider_names, attempts):
         try:
             return attempt()
-        except Exception:
+        except Exception as e:
+            logging.warning("AI provider %s failed: %s", name, e)
             continue
 
     return []
