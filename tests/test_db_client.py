@@ -75,3 +75,33 @@ def test_execute_many_sends_multiple_statements():
         ])
     payload = mock_post.call_args[1]["json"]
     assert len(payload["requests"]) == 2
+
+
+def test_execute_raises_on_turso_error():
+    from db.client import execute
+    mock = MagicMock()
+    mock.raise_for_status = MagicMock()
+    mock.json.return_value = {
+        "results": [{"type": "error", "error": {"message": "SQLITE_CONSTRAINT"}}]
+    }
+    with patch("db.client.requests.post", return_value=mock):
+        with pytest.raises(RuntimeError, match="SQLITE_CONSTRAINT"):
+            execute("INSERT INTO users VALUES (?)", [1])
+
+
+def test_execute_many_raises_on_partial_failure():
+    from db.client import execute_many
+    mock = MagicMock()
+    mock.raise_for_status = MagicMock()
+    mock.json.return_value = {
+        "results": [
+            {"type": "ok", "response": {"type": "execute", "result": {"cols": [], "rows": [], "affected_row_count": 1, "last_insert_rowid": None}}},
+            {"type": "error", "error": {"message": "UNIQUE constraint failed"}},
+        ]
+    }
+    with patch("db.client.requests.post", return_value=mock):
+        with pytest.raises(RuntimeError, match="UNIQUE constraint failed"):
+            execute_many([
+                ("INSERT INTO users VALUES (?)", [1]),
+                ("INSERT INTO users VALUES (?)", [1]),
+            ])

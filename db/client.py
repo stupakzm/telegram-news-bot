@@ -45,7 +45,10 @@ def execute(sql: str, args: list = None) -> list[dict]:
         timeout=10,
     )
     resp.raise_for_status()
-    result = resp.json()["results"][0]["response"]["result"]
+    result_obj = resp.json()["results"][0]
+    if result_obj.get("type") == "error":
+        raise RuntimeError(f"Turso error: {result_obj['error']['message']}")
+    result = result_obj["response"]["result"]
     cols = [c["name"] for c in result["cols"]]
     return [dict(zip(cols, [_coerce(v) for v in row])) for row in result["rows"]]
 
@@ -63,3 +66,11 @@ def execute_many(statements: list[tuple]) -> None:
         timeout=10,
     )
     resp.raise_for_status()
+    results = resp.json()["results"]
+    errors = [
+        r["error"]["message"]
+        for r in results
+        if r.get("type") == "error"
+    ]
+    if errors:
+        raise RuntimeError(f"Turso pipeline errors: {errors}")
