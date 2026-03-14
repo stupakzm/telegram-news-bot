@@ -18,7 +18,6 @@ Use the buttons below to get started, or type /upgrade to see paid options.
 
 def handle(message: dict) -> None:
     user_id = message["from"]["id"]
-    first_name = message["from"].get("first_name", "there")
 
     # Register user if not exists
     existing = db.execute("SELECT user_id FROM users WHERE user_id = ?", [user_id])

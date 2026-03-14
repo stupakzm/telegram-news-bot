@@ -30,8 +30,5 @@ def test_start_does_not_duplicate_existing_user(mock_execute, mock_execute_many,
     from bot.commands.start import handle
     handle(_message())
     # Should not insert again
-    for call in mock_execute_many.call_args_list:
-        statements = call[0][0]
-        for sql, _ in statements:
-            assert "INSERT" not in sql.upper()
+    mock_execute_many.assert_not_called()
     assert mock_send.called
