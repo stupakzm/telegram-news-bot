@@ -2,6 +2,7 @@
 from bot.commands import start, themes, schedule, upgrade, history, addtheme, settings
 from bot.commands import payments as payments_cmd
 import db.client as db
+import bot.telegram as tg
 
 COMMAND_MAP = {
     "/start": ("bot.commands.start", "handle"),
@@ -18,7 +19,6 @@ COMMAND_MAP = {
 def _handle_callback(callback_query: dict) -> None:
     data = callback_query.get("data", "")
     user_id = callback_query["from"]["id"]
-    message = callback_query.get("message", {})
 
     if data.startswith("themes:add:"):
         _, _, theme_type, theme_id = data.split(":")
@@ -40,7 +40,6 @@ def _handle_callback(callback_query: dict) -> None:
         addtheme.toggle_feed(user_id, idx)
     elif data == "addtheme:feeds_done":
         addtheme.feeds_done(user_id)
-    import bot.telegram as tg
     tg.answer_callback_query(callback_query["id"])
 
 
