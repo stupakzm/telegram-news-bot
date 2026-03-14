@@ -14,10 +14,11 @@ def handle(message: dict) -> None:
     tier = rows[0]["tier"] if rows else "free"
 
     if tier != "monthly":
-        tg.send_message(
-            chat_id=user_id,
-            text="📚 Digest history is available on the *Monthly plan*.\n\nUse /upgrade to unlock.",
-        )
+        if tier == "one_time":
+            text = "📚 Digest history is available on the *Monthly plan*.\n\nUse /upgrade to switch to Monthly."
+        else:
+            text = "📚 Digest history is available on the *Monthly plan*.\n\nUse /upgrade to unlock."
+        tg.send_message(chat_id=user_id, text=text)
         return
 
     history = db.execute(
@@ -32,10 +33,17 @@ def handle(message: dict) -> None:
 
     lines = []
     for row in history:
+        try:
+            articles = json.loads(row["articles"])
+        except (json.JSONDecodeError, KeyError):
+            continue
         dt = datetime.fromtimestamp(row["sent_at"], tz=timezone.utc).strftime("%b %d %H:%M UTC")
-        articles = json.loads(row["articles"])
         titles = ", ".join(a["title"][:40] for a in articles[:2])
         lines.append(f"• *{row['theme_name']}* — {dt}\n  _{titles}_")
 
-    text = "📚 *Your Digest History* (last 30)\n\n" + "\n\n".join(lines)
+    text = f"📚 *Your Digest History* (last {len(lines)})\n\n" + "\n\n".join(lines)
+
+    if len(text) > 4000:
+        text = text[:4000] + "\n\n_(truncated)_"
+
     tg.send_message(chat_id=user_id, text=text)

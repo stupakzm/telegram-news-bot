@@ -1,5 +1,4 @@
 # tests/bot/test_history.py
-import pytest
 from unittest.mock import patch
 import json, os
 
@@ -19,6 +18,16 @@ def test_history_blocked_for_free_users(mock_execute, mock_send):
     handle(_msg())
     text = mock_send.call_args[1].get("text", "")
     assert "Monthly" in text or "upgrade" in text.lower()
+
+
+@patch("bot.commands.history.tg.send_message")
+@patch("bot.commands.history.db.execute", return_value=[{"tier": "one_time"}])
+def test_history_blocked_for_one_time_users(mock_execute, mock_send):
+    from bot.commands.history import handle
+    handle(_msg())
+    text = mock_send.call_args[1].get("text", "")
+    assert "Monthly" in text
+    assert "switch" in text.lower()
 
 
 @patch("bot.commands.history.tg.send_message")
