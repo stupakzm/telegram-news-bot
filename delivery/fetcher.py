@@ -1,0 +1,34 @@
+import feedparser
+import db.client as db
+
+
+def fetch_articles(theme: dict) -> list[dict]:
+    """
+    Fetch new articles for a theme (default or custom).
+    Filters out URLs already in posted_articles.
+    Returns list of article dicts.
+
+    theme dict keys: id, theme_type, name, hashtag, rss_feeds (list of URLs)
+    """
+    posted = {row["url"] for row in db.execute("SELECT url FROM posted_articles")}
+    articles = []
+
+    for feed_url in theme["rss_feeds"]:
+        try:
+            feed = feedparser.parse(feed_url)
+            for entry in feed.entries:
+                url = getattr(entry, "link", None)
+                if not url or url in posted:
+                    continue
+                articles.append({
+                    "url": url,
+                    "title": getattr(entry, "title", ""),
+                    "description": getattr(entry, "summary", ""),
+                    "theme_type": theme["theme_type"],
+                    "theme_id": theme["id"],
+                    "hashtag": theme["hashtag"],
+                })
+        except Exception:
+            continue  # skip broken feeds silently
+
+    return articles
