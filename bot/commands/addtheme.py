@@ -2,6 +2,7 @@
 import json
 import time
 import feedparser
+import requests as _requests
 import db.client as db
 import bot.telegram as tg
 import google.generativeai as genai
@@ -29,7 +30,9 @@ def _suggest_feeds(topic: str) -> list[dict]:
 
 def _validate_feed(url: str) -> bool:
     try:
-        feed = feedparser.parse(url)
+        resp = _requests.get(url, timeout=5, headers={"User-Agent": "feedparser"})
+        resp.raise_for_status()
+        feed = feedparser.parse(resp.content)
         return len(feed.entries) > 0
     except Exception:
         return False
@@ -83,11 +86,8 @@ def _save_custom_theme(user_id: int, name: str, hashtag: str,
         "VALUES (?, ?, ?, ?, ?)",
         [user_id, name, hashtag, json.dumps(rss_feeds), 1 if ai_suggested else 0],
     )
-    # RETURNING not supported by all Turso versions — fetch the newly inserted row:
-    rows = db.execute(
-        "SELECT id FROM custom_themes WHERE user_id = ? AND name = ? ORDER BY id DESC LIMIT 1",
-        [user_id, name],
-    )
+    # Use last_insert_rowid() for atomicity — avoids TOCTOU race with concurrent inserts:
+    rows = db.execute("SELECT last_insert_rowid() as id", [])
     custom_id = rows[0]["id"]
     db.execute_many([
         (
@@ -189,6 +189,12 @@ def handle_pending(message: dict, action: str, data_json: str) -> None:
         _clear_pending(user_id)
         tg.send_message(chat_id=user_id, text=f"✅ Theme *{text}* added! Use /themes to manage it.")
 
+    else:
+        import logging
+        logging.warning("handle_pending: unknown action %r for user %d", action, user_id)
+        _clear_pending(user_id)
+        tg.send_message(chat_id=user_id, text="⚠️ Something went wrong. Please try your command again.")
+
 
 def toggle_feed(user_id: int, feed_idx: int) -> None:
     """Toggle a feed selection in the addtheme_ai_feeds pending state."""
@@ -230,6 +236,10 @@ def feeds_done(user_id: int) -> None:
     if not rows:
         return
     data = json.loads(rows[0]["data"])
+    selected = data.get("selected", [])
+    if not selected:
+        tg.send_message(chat_id=user_id, text="⚠️ Please select at least one feed before continuing.")
+        return
     _set_pending(user_id, "addtheme_ai_name", data)
     tg.send_message(
         chat_id=user_id,
