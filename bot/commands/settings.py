@@ -18,7 +18,7 @@ def handle(message: dict) -> None:
 
     themes = db.execute(
         """
-        SELECT ut.theme_type, ut.theme_id, ut.articles_per_theme,
+        SELECT ut.id as user_theme_id, ut.theme_type, ut.theme_id, ut.articles_per_theme,
                t.name as default_name, ct.name as custom_name
         FROM user_themes ut
         LEFT JOIN themes t ON ut.theme_type = 'default' AND t.id = ut.theme_id
@@ -38,18 +38,23 @@ def handle(message: dict) -> None:
         exp_dt = datetime.fromtimestamp(expires, tz=timezone.utc).strftime("%b %d, %Y")
         tier_label += f" (renews {exp_dt})"
 
+    theme_name_by_user_theme_id = {}
     theme_lines = []
     for t in themes:
         name = t["default_name"] or t["custom_name"] or "?"
-        tag = "(custom)" if t["theme_type"] == "custom" else ""
-        theme_lines.append(f"  • {name} {tag} — {t['articles_per_theme']} article(s)/delivery")
+        theme_name_by_user_theme_id[t["user_theme_id"]] = name
+        tag = " (custom)" if t["theme_type"] == "custom" else ""
+        theme_lines.append(f"  • {name}{tag} — {t['articles_per_theme']} article(s)/delivery")
 
     schedule_lines = []
     for s in schedules:
-        days = json.loads(s["days"])
+        try:
+            days = json.loads(s["days"])
+        except (json.JSONDecodeError, TypeError):
+            continue
         day_names = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
         day_str = ", ".join(day_names[d - 1] for d in days)
-        scope = "All themes" if s["user_theme_id"] is None else f"Theme {s['user_theme_id']}"
+        scope = "All themes" if s["user_theme_id"] is None else theme_name_by_user_theme_id.get(s["user_theme_id"], f"Theme {s['user_theme_id']}")
         schedule_lines.append(f"  • {scope}: {day_str} at {s['hour_utc']:02d}:00 UTC")
 
     text = (
