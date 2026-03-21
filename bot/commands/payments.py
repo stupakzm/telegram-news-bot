@@ -35,6 +35,13 @@ def handle_successful_payment(message: dict) -> None:
     user_id = message["from"]["id"]
     payment = message["successful_payment"]
     payload = payment["invoice_payload"]  # e.g. "tier:one_time"
+    if ":" not in payload:
+        logging.error("handle_successful_payment: malformed payload %r for user %d", payload, user_id)
+        tg.send_message(
+            chat_id=user_id,
+            text="⚠️ Payment received but could not be processed. Please contact support.",
+        )
+        return
     tier = payload.split(":", 1)[1]
     amount = payment["total_amount"]
     now = int(time.time())

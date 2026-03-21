@@ -1,3 +1,4 @@
+import logging
 import feedparser
 import db.client as db
 
@@ -32,7 +33,8 @@ def fetch_articles(theme: dict) -> list[dict]:
                     "theme_id": theme["id"],
                     "hashtag": theme["hashtag"],
                 })
-        except Exception:
-            continue  # skip broken feeds silently
+        except Exception as e:
+            logging.warning("RSS feed failed: url=%s error=%s", feed_url, e)
+            continue
 
     return articles
