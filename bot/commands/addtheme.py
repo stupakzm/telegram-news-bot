@@ -7,6 +7,7 @@ import db.client as db
 import bot.telegram as tg
 import google.generativeai as genai
 import os
+from bot.validation import validate_rss_url
 
 RSS_SUGGEST_PROMPT = """\
 Suggest 4-5 high-quality RSS feed URLs for the topic: "{topic}"
@@ -29,6 +30,8 @@ def _suggest_feeds(topic: str) -> list[dict]:
 
 
 def _validate_feed(url: str) -> bool:
+    if not validate_rss_url(url):
+        return False
     try:
         resp = _requests.get(url, timeout=5, headers={"User-Agent": "feedparser"})
         resp.raise_for_status()
@@ -170,6 +173,13 @@ def handle_pending(message: dict, action: str, data_json: str) -> None:
         if not urls:
             tg.send_message(chat_id=user_id, text="❌ No valid URLs found. Send URLs starting with http.")
             return
+        # Filter out restricted URLs
+        blocked = [u for u in urls if not validate_rss_url(u)]
+        if blocked:
+            tg.send_message(chat_id=user_id, text="❌ That URL uses a restricted address and cannot be used as an RSS feed.")
+            urls = [u for u in urls if validate_rss_url(u)]
+            if not urls:
+                return
         valid = [u for u in urls if _validate_feed(u)]
         if not valid:
             tg.send_message(chat_id=user_id, text="❌ None returned valid RSS entries. Check URLs and retry.")

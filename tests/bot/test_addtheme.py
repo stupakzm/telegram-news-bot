@@ -96,6 +96,19 @@ def test_feeds_done_empty_selection_warns_user(mock_execute, mock_send):
     assert "select" in text.lower() or "⚠️" in text
 
 
+# --- BUG-06/SAFE-02: handle_pending rejects restricted URLs ---
+
+@patch("bot.commands.addtheme.tg.send_message")
+@patch("bot.commands.addtheme.validate_rss_url", return_value=False)
+def test_handle_pending_manual_urls_rejects_restricted_url(mock_validate, mock_send):
+    from bot.commands.addtheme import handle_pending
+    msg = _msg(text="https://192.168.1.1/feed")
+    handle_pending(msg, "addtheme_manual_urls", "{}")
+    assert mock_send.called
+    text = mock_send.call_args[1].get("text", "")
+    assert "restricted" in text.lower()
+
+
 # --- BUG-01: _save_custom_theme uses RETURNING id, not last_insert_rowid ---
 
 @patch("bot.commands.addtheme.tg.send_message")

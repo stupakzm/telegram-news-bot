@@ -1,6 +1,7 @@
 import logging
 import feedparser
 import db.client as db
+from bot.validation import validate_rss_url
 
 
 def fetch_articles(theme: dict) -> list[dict]:
@@ -19,6 +20,9 @@ def fetch_articles(theme: dict) -> list[dict]:
     articles = []
 
     for feed_url in theme["rss_feeds"]:
+        if not validate_rss_url(feed_url):
+            logging.warning("Skipping restricted RSS URL: %s", feed_url)
+            continue
         try:
             feed = feedparser.parse(feed_url)
             for entry in feed.entries:

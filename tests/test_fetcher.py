@@ -74,6 +74,20 @@ def test_fetch_articles_skips_broken_feed(mock_execute, mock_parse):
 
 # --- BUG-04: broken feeds are logged with URL and exception detail ---
 
+# --- BUG-06/SAFE-02: fetcher skips restricted URLs ---
+
+@patch("delivery.fetcher.logging.warning")
+@patch("delivery.fetcher.validate_rss_url", return_value=False)
+@patch("delivery.fetcher.feedparser.parse")
+@patch("delivery.fetcher.db.execute", return_value=[])
+def test_fetch_articles_skips_restricted_url(mock_execute, mock_parse, mock_validate, mock_warning):
+    from delivery.fetcher import fetch_articles
+    result = fetch_articles(_theme(feeds=["https://192.168.1.1/feed"]))
+    assert result == []
+    assert not mock_parse.called, "feedparser.parse should not be called for restricted URLs"
+    assert mock_warning.called
+
+
 @patch("delivery.fetcher.logging.warning")
 @patch("delivery.fetcher.feedparser.parse", side_effect=Exception("network error"))
 @patch("delivery.fetcher.db.execute")
