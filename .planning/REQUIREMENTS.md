@@ -7,10 +7,10 @@
 
 ### Bug Fixes
 
-- [ ] **BUG-01**: Custom theme creation uses `RETURNING id` to avoid race condition (replaces `last_insert_rowid`)
-- [ ] **BUG-02**: Gemini fallback model name is correct and resolves without 404
-- [ ] **BUG-03**: Payment handler gracefully handles malformed invoice payload (no `IndexError`)
-- [ ] **BUG-04**: Broken RSS feeds are logged at warning level with URL and exception detail
+- [x] **BUG-01**: Custom theme creation uses `RETURNING id` to avoid race condition (replaces `last_insert_rowid`)
+- [x] **BUG-02**: Gemini fallback model name is correct and resolves without 404
+- [x] **BUG-03**: Payment handler gracefully handles malformed invoice payload (no `IndexError`)
+- [x] **BUG-04**: Broken RSS feeds are logged at warning level with URL and exception detail
 - [ ] **BUG-05**: Webhook endpoint verifies `X-Telegram-Bot-Api-Secret-Token` header; returns 403 on mismatch
 - [ ] **BUG-06**: RSS URL input validated against private IP ranges and enforces http/https scheme
 

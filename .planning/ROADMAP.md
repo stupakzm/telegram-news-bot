@@ -14,7 +14,7 @@
 **Plans:** 2 plans
 
 Plans:
-- [ ] 01-01-PLAN.md — Fix race condition, Gemini fallback, payment parsing, feed logging (BUG-01, BUG-02, BUG-03, BUG-04)
+- [x] 01-01-PLAN.md — Fix race condition, Gemini fallback, payment parsing, feed logging (BUG-01, BUG-02, BUG-03, BUG-04)
 - [ ] 01-02-PLAN.md — Webhook secret verification and RSS SSRF mitigation (BUG-05, BUG-06, SAFE-02)
 
 **Deliverables:**
@@ -63,7 +63,7 @@ Plans:
 
 | Phase | Name | Requirements | Status |
 |-------|------|-------------|--------|
-| 1 | Bug Fixes & Security | BUG-01-06, SAFE-02 | Pending |
+| 1 | Bug Fixes & Security | BUG-01-06, SAFE-02 | In Progress (1/2) |
 | 2 | Observability & Rate Limiting | OBS-01-03, SAFE-01 | Pending |
 | 3 | New Features | FEAT-01-03 | Pending |
 
