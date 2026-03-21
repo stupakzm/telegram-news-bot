@@ -94,3 +94,19 @@ def test_feeds_done_empty_selection_warns_user(mock_execute, mock_send):
     feeds_done(user_id=1)
     text = mock_send.call_args[1].get("text", "")
     assert "select" in text.lower() or "⚠️" in text
+
+
+# --- BUG-01: _save_custom_theme uses RETURNING id, not last_insert_rowid ---
+
+@patch("bot.commands.addtheme.tg.send_message")
+@patch("bot.commands.addtheme.db.execute_many")
+@patch("bot.commands.addtheme.db.execute", return_value=[{"id": 42}])
+def test_save_custom_theme_uses_returning_id(mock_execute, mock_execute_many, mock_send):
+    from bot.commands.addtheme import _save_custom_theme
+    _save_custom_theme(user_id=1, name="Test", hashtag="#test", rss_feeds=["https://example.com/feed"], ai_suggested=False)
+    sql = mock_execute.call_args[0][0]
+    assert "RETURNING id" in sql
+    assert "last_insert_rowid" not in sql
+    # Verify user_themes INSERT uses the returned id (42)
+    stmt_list = mock_execute_many.call_args[0][0]
+    assert stmt_list[0][1][1] == 42  # theme_id arg should be 42

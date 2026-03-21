@@ -85,3 +85,16 @@ def test_build_prompt_contains_articles_and_hashtag():
     assert "#ai" in prompt
     assert "AI Regulation Passed" in prompt
     assert "New GPU Released" in prompt
+
+
+# --- BUG-02: GEMINI_FALLBACK constant value and docstring accuracy ---
+
+def test_gemini_fallback_constant_is_valid_model():
+    from delivery.ai import GEMINI_FALLBACK
+    assert GEMINI_FALLBACK == "gemini-2.0-flash"
+
+
+def test_summarize_docstring_matches_constants():
+    from delivery.ai import summarize_articles, GEMINI_PRIMARY, GEMINI_FALLBACK
+    doc = summarize_articles.__doc__
+    assert GEMINI_FALLBACK.replace("gemini-", "Gemini ").replace("-", " ").title() in doc or "2.0 Flash" in doc
