@@ -70,3 +70,20 @@ def test_fetch_articles_skips_broken_feed(mock_execute, mock_parse):
     from delivery.fetcher import fetch_articles
     result = fetch_articles(_theme())
     assert result == []
+
+
+# --- BUG-04: broken feeds are logged with URL and exception detail ---
+
+@patch("delivery.fetcher.logging.warning")
+@patch("delivery.fetcher.feedparser.parse", side_effect=Exception("network error"))
+@patch("delivery.fetcher.db.execute")
+def test_fetch_articles_logs_broken_feed_with_url(mock_execute, mock_parse, mock_warning):
+    mock_execute.return_value = []
+    from delivery.fetcher import fetch_articles
+    result = fetch_articles(_theme(feeds=["https://broken.example.com/rss"]))
+    assert result == []
+    assert mock_warning.called
+    log_args = mock_warning.call_args
+    log_msg = log_args[0][0] % tuple(log_args[0][1:])
+    assert "broken.example.com" in log_msg
+    assert "network error" in log_msg

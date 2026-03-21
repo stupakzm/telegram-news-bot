@@ -119,3 +119,41 @@ def test_handle_successful_payment_unknown_tier_sends_error(mock_execute_many, m
     assert mock_send.called, "Error message should be sent to user"
     text = mock_send.call_args[1].get("text", "") or mock_send.call_args[0][1]
     assert "contact support" in text.lower() or "⚠️" in text
+
+
+# --- BUG-03: malformed payment payload guard ---
+
+@patch("bot.commands.payments.tg.send_message")
+@patch("bot.commands.payments.db.execute_many")
+def test_handle_successful_payment_malformed_payload_no_colon(mock_execute_many, mock_send):
+    from bot.commands.payments import handle_successful_payment
+    handle_successful_payment({
+        "from": {"id": 1},
+        "chat": {"id": 1},
+        "successful_payment": {
+            "invoice_payload": "garbage_no_colon",
+            "total_amount": 100,
+            "currency": "XTR",
+        }
+    })
+    assert not mock_execute_many.called, "DB should not be updated for malformed payload"
+    assert mock_send.called
+    text = mock_send.call_args[1].get("text", "")
+    assert "could not be processed" in text.lower() or "contact support" in text.lower()
+
+
+@patch("bot.commands.payments.tg.send_message")
+@patch("bot.commands.payments.db.execute_many")
+def test_handle_successful_payment_empty_payload(mock_execute_many, mock_send):
+    from bot.commands.payments import handle_successful_payment
+    handle_successful_payment({
+        "from": {"id": 1},
+        "chat": {"id": 1},
+        "successful_payment": {
+            "invoice_payload": "",
+            "total_amount": 100,
+            "currency": "XTR",
+        }
+    })
+    assert not mock_execute_many.called
+    assert mock_send.called
