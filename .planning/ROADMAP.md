@@ -15,7 +15,7 @@
 
 Plans:
 - [x] 01-01-PLAN.md — Fix race condition, Gemini fallback, payment parsing, feed logging (BUG-01, BUG-02, BUG-03, BUG-04)
-- [ ] 01-02-PLAN.md — Webhook secret verification and RSS SSRF mitigation (BUG-05, BUG-06, SAFE-02)
+- [x] 01-02-PLAN.md — Webhook secret verification and RSS SSRF mitigation (BUG-05, BUG-06, SAFE-02)
 
 **Deliverables:**
 - `RETURNING id` in custom theme INSERT (eliminates race condition)
@@ -63,10 +63,10 @@ Plans:
 
 | Phase | Name | Requirements | Status |
 |-------|------|-------------|--------|
-| 1 | Bug Fixes & Security | BUG-01-06, SAFE-02 | In Progress (1/2) |
+| 1 | Bug Fixes & Security | BUG-01-06, SAFE-02 | Complete (2/2) |
 | 2 | Observability & Rate Limiting | OBS-01-03, SAFE-01 | Pending |
 | 3 | New Features | FEAT-01-03 | Pending |
 
 ---
 *Roadmap created: 2026-03-21*
-*Last updated: 2026-03-21 after phase 1 planning*
+*Last updated: 2026-03-22 after phase 1 plan 02 execution*

@@ -11,8 +11,8 @@
 - [x] **BUG-02**: Gemini fallback model name is correct and resolves without 404
 - [x] **BUG-03**: Payment handler gracefully handles malformed invoice payload (no `IndexError`)
 - [x] **BUG-04**: Broken RSS feeds are logged at warning level with URL and exception detail
-- [ ] **BUG-05**: Webhook endpoint verifies `X-Telegram-Bot-Api-Secret-Token` header; returns 403 on mismatch
-- [ ] **BUG-06**: RSS URL input validated against private IP ranges and enforces http/https scheme
+- [x] **BUG-05**: Webhook endpoint verifies `X-Telegram-Bot-Api-Secret-Token` header; returns 403 on mismatch
+- [x] **BUG-06**: RSS URL input validated against private IP ranges and enforces http/https scheme
 
 ### Observability
 
@@ -23,7 +23,7 @@
 ### Safety
 
 - [ ] **SAFE-01**: Per-user command rate limiting (max 5 commands/minute, returns friendly message)
-- [ ] **SAFE-02**: RSS feed URLs validated before storage (scheme, private IP block, redirect limit)
+- [x] **SAFE-02**: RSS feed URLs validated before storage (scheme, private IP block, redirect limit)
 
 ### Features
 
@@ -66,17 +66,17 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| BUG-01 | Phase 1 | Pending |
-| BUG-02 | Phase 1 | Pending |
-| BUG-03 | Phase 1 | Pending |
-| BUG-04 | Phase 1 | Pending |
-| BUG-05 | Phase 1 | Pending |
-| BUG-06 | Phase 1 | Pending |
+| BUG-01 | Phase 1 | Done |
+| BUG-02 | Phase 1 | Done |
+| BUG-03 | Phase 1 | Done |
+| BUG-04 | Phase 1 | Done |
+| BUG-05 | Phase 1 | Done |
+| BUG-06 | Phase 1 | Done |
 | OBS-01 | Phase 2 | Pending |
 | OBS-02 | Phase 2 | Pending |
 | OBS-03 | Phase 2 | Pending |
 | SAFE-01 | Phase 2 | Pending |
-| SAFE-02 | Phase 1 | Pending |
+| SAFE-02 | Phase 1 | Done |
 | FEAT-01 | Phase 3 | Pending |
 | FEAT-02 | Phase 3 | Pending |
 | FEAT-03 | Phase 3 | Pending |
@@ -88,4 +88,4 @@
 
 ---
 *Requirements defined: 2026-03-21*
-*Last updated: 2026-03-21 after initial definition*
+*Last updated: 2026-03-22 after phase 1 plan 02 execution*
