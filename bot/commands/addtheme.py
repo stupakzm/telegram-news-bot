@@ -81,13 +81,12 @@ def _clear_pending(user_id: int) -> None:
 def _save_custom_theme(user_id: int, name: str, hashtag: str,
                         rss_feeds: list[str], ai_suggested: bool) -> None:
     """Insert custom theme into custom_themes and link it in user_themes."""
-    db.execute(
+    # Atomic INSERT with RETURNING avoids TOCTOU race
+    rows = db.execute(
         "INSERT INTO custom_themes (user_id, name, hashtag, rss_feeds, ai_suggested) "
-        "VALUES (?, ?, ?, ?, ?)",
+        "VALUES (?, ?, ?, ?, ?) RETURNING id",
         [user_id, name, hashtag, json.dumps(rss_feeds), 1 if ai_suggested else 0],
     )
-    # Use last_insert_rowid() for atomicity — avoids TOCTOU race with concurrent inserts:
-    rows = db.execute("SELECT last_insert_rowid() as id", [])
     custom_id = rows[0]["id"]
     db.execute_many([
         (

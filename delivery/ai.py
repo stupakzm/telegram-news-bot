@@ -74,7 +74,7 @@ def _call_groq(prompt: str) -> list[dict]:
 def summarize_articles(articles: list[dict], hashtag: str) -> list[dict]:
     """
     Summarize articles using AI. Returns list of summary dicts.
-    Falls back: Gemini 2.5 Flash → Gemini 3.5 Flash → Groq Llama.
+    Falls back: Gemini 2.5 Flash → Gemini 2.0 Flash → Groq Llama.
     Returns [] if all providers fail.
     """
     if not articles:
