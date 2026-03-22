@@ -50,6 +50,7 @@ def get_theme_info(theme_type: str, theme_id: int) -> dict | None:
 
 def run():
     now_utc = datetime.now(timezone.utc)
+    run_start = time.monotonic()
     hour_utc = now_utc.hour
     weekday = now_utc.isoweekday()  # 1=Mon...7=Sun
     date_str = now_utc.strftime("%Y-%m-%d")
@@ -62,11 +63,18 @@ def run():
     if not deliveries:
         logger.info("No users due this hour")
         check_expiry_reminders()
+        duration = time.monotonic() - run_start
+        logger.info("run complete: themes=0 users=0 articles_sent=0 errors=0 duration=%.1fs", duration)
         return
 
     # Step 2: group by theme
     groups = group_by_theme(deliveries)
     logger.info("%d unique theme(s) to process for %d delivery row(s)", len(groups), len(deliveries))
+
+    total_themes = 0
+    total_users_served = 0
+    total_articles_sent = 0
+    total_errors = 0
 
     all_posted_urls: list[str] = []
     # track actual articles sent per group for digest history
@@ -157,6 +165,12 @@ def run():
                     theme_id, theme_type, theme_name, user_count,
                     articles_fetched, articles_sent, status
                 )
+            # Run-level counters (D-08)
+            total_themes += 1
+            if status == "error":
+                total_errors += 1
+            total_articles_sent += articles_sent
+            total_users_served += user_count
 
     # Step 5: mark URLs as posted (global dedup)
     if all_posted_urls:
@@ -194,7 +208,11 @@ def run():
 
     # Step 7: expiry reminders
     check_expiry_reminders()
-    logger.info("Delivery run complete")
+    duration = time.monotonic() - run_start
+    logger.info(
+        "run complete: themes=%d users=%d articles_sent=%d errors=%d duration=%.1fs",
+        total_themes, total_users_served, total_articles_sent, total_errors, duration
+    )
 
 
 if __name__ == "__main__":
