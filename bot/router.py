@@ -2,6 +2,7 @@
 import logging
 from bot.commands import start, themes, schedule, upgrade, history, addtheme, settings
 from bot.commands import payments as payments_cmd
+from bot.rate_limiter import check_rate_limit
 import db.client as db
 import bot.telegram as tg
 
@@ -95,6 +96,18 @@ def handle_update(update: dict) -> None:
 
     if not text.startswith("/"):
         if _handle_pending_action(message):
+            return
+
+    if text.startswith("/"):
+        # Rate limit commands only (D-13, D-15)
+        user_id = message["from"]["id"]
+        chat_id = message["chat"]["id"]
+        allowed, retry_after = check_rate_limit(user_id)
+        if not allowed:
+            tg.send_message(
+                chat_id=chat_id,
+                text=f"Slow down! You've sent too many commands. Try again in {retry_after} seconds.",
+            )
             return
 
     command = text.split()[0].split("@")[0]
