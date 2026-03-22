@@ -1,6 +1,7 @@
 import os
 import time
 import logging
+logger = logging.getLogger(__name__)
 import requests
 import db.client as db
 
@@ -94,7 +95,7 @@ def check_expiry_reminders() -> None:
                 timeout=10,
             )
         except Exception as e:
-            logging.warning("Failed to send expiry reminder to user %s: %s", user["user_id"], e)
+            logger.warning("Failed to send expiry reminder to user %s: %s", user["user_id"], e)
             continue  # don't update DB if send failed
         try:
             db.execute_many([
@@ -102,4 +103,4 @@ def check_expiry_reminders() -> None:
                  [now, user["user_id"]])
             ])
         except Exception as e:
-            logging.warning("Failed to update last_reminder_at for user %s: %s", user["user_id"], e)
+            logger.warning("Failed to update last_reminder_at for user %s: %s", user["user_id"], e)

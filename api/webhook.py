@@ -4,7 +4,6 @@ import json
 import sys
 import os
 import hmac
-import logging
 from http.server import BaseHTTPRequestHandler
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
@@ -12,10 +11,16 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from dotenv import load_dotenv
 load_dotenv()
 
+from bot.logging_config import setup as setup_logging
+setup_logging()
+
+import logging
+logger = logging.getLogger(__name__)
+
 from bot.router import handle_update
 
 if not os.environ.get("WEBHOOK_SECRET"):
-    logging.warning("WEBHOOK_SECRET not set — webhook endpoint is unauthenticated")
+    logger.warning("WEBHOOK_SECRET not set — webhook endpoint is unauthenticated")
 
 
 class handler(BaseHTTPRequestHandler):
@@ -35,7 +40,7 @@ class handler(BaseHTTPRequestHandler):
             update = json.loads(body)
             handle_update(update)
         except Exception as e:
-            print(f"[webhook] error: {e}")
+            logger.error("Webhook handler error: %s", e)
         self.send_response(200)
         self.end_headers()
         self.wfile.write(b"OK")

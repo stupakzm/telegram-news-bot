@@ -1,5 +1,6 @@
 # bot/commands/payments.py
 import logging
+logger = logging.getLogger(__name__)
 import os
 import time
 import db.client as db
@@ -36,7 +37,7 @@ def handle_successful_payment(message: dict) -> None:
     payment = message["successful_payment"]
     payload = payment["invoice_payload"]  # e.g. "tier:one_time"
     if ":" not in payload:
-        logging.error("handle_successful_payment: malformed payload %r for user %d", payload, user_id)
+        logger.error("handle_successful_payment: malformed payload %r for user %d", payload, user_id)
         tg.send_message(
             chat_id=user_id,
             text="⚠️ Payment received but could not be processed. Please contact support.",
@@ -71,7 +72,7 @@ def handle_successful_payment(message: dict) -> None:
             text="🎉 *Monthly subscription activated!* All features unlocked for 30 days.",
         )
     else:
-        logging.error(
+        logger.error(
             "handle_successful_payment: unknown tier %r in payload %r", tier, payload
         )
         tg.send_message(

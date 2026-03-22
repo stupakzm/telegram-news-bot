@@ -1,5 +1,6 @@
 import json
 import logging
+logger = logging.getLogger(__name__)
 import os
 import requests
 import google.generativeai as genai
@@ -96,7 +97,7 @@ def summarize_articles(articles: list[dict], hashtag: str) -> list[dict]:
         try:
             return attempt()
         except Exception as e:
-            logging.warning("AI provider %s failed: %s", name, e)
+            logger.warning("AI provider %s failed: %s", name, e)
             continue
 
     return []

@@ -1,8 +1,11 @@
 # bot/router.py
+import logging
 from bot.commands import start, themes, schedule, upgrade, history, addtheme, settings
 from bot.commands import payments as payments_cmd
 import db.client as db
 import bot.telegram as tg
+
+logger = logging.getLogger(__name__)
 
 COMMAND_MAP = {
     "/start": ("bot.commands.start", "handle"),
@@ -67,8 +70,7 @@ def _handle_pending_action(message: dict) -> bool:
         schedule.handle_pending(message, action, data_json)
     else:
         # Unknown pending action — clear it
-        import logging
-        logging.warning("_handle_pending_action: unknown action %r for user %d", action, user_id)
+        logger.warning("_handle_pending_action: unknown action %r for user %d", action, user_id)
         db.execute_many([("DELETE FROM user_pending_actions WHERE user_id = ?", [user_id])])
     return True
 

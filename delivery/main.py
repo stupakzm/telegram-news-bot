@@ -4,11 +4,17 @@ Main delivery orchestrator. Called by GitHub Actions every hour.
 Usage: python -m delivery.main
 """
 import json
+import logging
 import time
 from datetime import datetime, timezone
 
 from dotenv import load_dotenv
 load_dotenv()  # load env BEFORE project imports that may read env at import time
+
+from bot.logging_config import setup as setup_logging
+setup_logging()
+
+logger = logging.getLogger(__name__)
 
 import db.client as db
 from delivery.scheduler import get_due_deliveries, group_by_theme, check_expiry_reminders
@@ -49,18 +55,18 @@ def run():
     date_str = now_utc.strftime("%Y-%m-%d")
     quarter = theme_cache.current_quarter(hour_utc)
 
-    print(f"[deliver] {date_str} Q{quarter} hour={hour_utc} weekday={weekday}")
+    logger.info("run start: date=%s quarter=Q%d hour=%d weekday=%d", date_str, quarter, hour_utc, weekday)
 
     # Step 1: find users due this hour
     deliveries = get_due_deliveries(hour_utc=hour_utc, weekday=weekday)
     if not deliveries:
-        print("[deliver] No users due this hour.")
+        logger.info("No users due this hour")
         check_expiry_reminders()
         return
 
     # Step 2: group by theme
     groups = group_by_theme(deliveries)
-    print(f"[deliver] {len(groups)} unique theme(s) to process for {len(deliveries)} delivery row(s)")
+    logger.info("%d unique theme(s) to process for %d delivery row(s)", len(groups), len(deliveries))
 
     all_posted_urls: list[str] = []
     # track actual articles sent per group for digest history
@@ -73,7 +79,7 @@ def run():
     for (theme_type, theme_id), users in groups.items():
         theme = get_theme_info(theme_type, theme_id)
         if not theme:
-            print(f"[deliver] Theme ({theme_type}, {theme_id}) not found — skipping")
+            logger.warning("Theme not found: theme_type=%s theme_id=%d", theme_type, theme_id)
             continue
 
         group_theme_info[(theme_type, theme_id)] = theme
@@ -86,14 +92,14 @@ def run():
             try:
                 raw_articles = fetch_articles(theme)
                 if not raw_articles:
-                    print(f"[deliver] No new articles for {theme['name']}")
+                    logger.info("No new articles for %s", theme["name"])
                     continue
                 articles = summarize_articles(raw_articles, theme["hashtag"])
                 if not articles:
-                    print(f"[deliver] AI returned no summaries for {theme['name']}")
+                    logger.info("AI returned no summaries for %s", theme["name"])
                     continue
             except Exception as e:
-                print(f"[deliver] Error fetching/summarizing {theme['name']}: {e}")
+                logger.error("Error fetching/summarizing %s: %s", theme["name"], e)
                 continue
             # Cache the result
             theme_cache.set_cache(theme_type, theme_id, date_str, quarter, articles)
@@ -119,7 +125,7 @@ def run():
                     all_posted_urls.append(article["url"])
                     time.sleep(0.1)  # avoid Telegram flood limits
                 except Exception as e:
-                    print(f"[deliver] Failed to post to user {user['user_id']}: {e}")
+                    logger.error("Failed to post to user %d: %s", user["user_id"], e)
 
     # Step 5: mark URLs as posted (global dedup)
     if all_posted_urls:
@@ -153,11 +159,11 @@ def run():
             try:
                 db.execute_many(digest_statements)
             except Exception as e:
-                print(f"[deliver] Failed to write history for theme ({theme_type}, {theme_id}): {e}")
+                logger.error("Failed to write digest history for theme (%s, %d): %s", theme_type, theme_id, e)
 
     # Step 7: expiry reminders
     check_expiry_reminders()
-    print("[deliver] Done.")
+    logger.info("Delivery run complete")
 
 
 if __name__ == "__main__":

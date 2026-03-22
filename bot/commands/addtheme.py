@@ -1,5 +1,6 @@
 # bot/commands/addtheme.py
 import json
+import logging
 import time
 import feedparser
 import requests as _requests
@@ -8,6 +9,8 @@ import bot.telegram as tg
 import google.generativeai as genai
 import os
 from bot.validation import validate_rss_url
+
+logger = logging.getLogger(__name__)
 
 RSS_SUGGEST_PROMPT = """\
 Suggest 4-5 high-quality RSS feed URLs for the topic: "{topic}"
@@ -199,8 +202,7 @@ def handle_pending(message: dict, action: str, data_json: str) -> None:
         tg.send_message(chat_id=user_id, text=f"✅ Theme *{text}* added! Use /themes to manage it.")
 
     else:
-        import logging
-        logging.warning("handle_pending: unknown action %r for user %d", action, user_id)
+        logger.warning("handle_pending: unknown action %r for user %d", action, user_id)
         _clear_pending(user_id)
         tg.send_message(chat_id=user_id, text="⚠️ Something went wrong. Please try your command again.")
 

@@ -1,4 +1,5 @@
 import logging
+logger = logging.getLogger(__name__)
 import feedparser
 import db.client as db
 from bot.validation import validate_rss_url
@@ -21,7 +22,7 @@ def fetch_articles(theme: dict) -> list[dict]:
 
     for feed_url in theme["rss_feeds"]:
         if not validate_rss_url(feed_url):
-            logging.warning("Skipping restricted RSS URL: %s", feed_url)
+            logger.warning("Skipping restricted RSS URL: %s", feed_url)
             continue
         try:
             feed = feedparser.parse(feed_url)
@@ -38,7 +39,7 @@ def fetch_articles(theme: dict) -> list[dict]:
                     "hashtag": theme["hashtag"],
                 })
         except Exception as e:
-            logging.warning("RSS feed failed: url=%s error=%s", feed_url, e)
+            logger.warning("RSS feed failed: url=%s error=%s", feed_url, e)
             continue
 
     return articles
