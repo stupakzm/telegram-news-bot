@@ -76,28 +76,28 @@ def test_fetch_articles_skips_broken_feed(mock_execute, mock_parse):
 
 # --- BUG-06/SAFE-02: fetcher skips restricted URLs ---
 
-@patch("delivery.fetcher.logging.warning")
+@patch("delivery.fetcher.logger")
 @patch("delivery.fetcher.validate_rss_url", return_value=False)
 @patch("delivery.fetcher.feedparser.parse")
 @patch("delivery.fetcher.db.execute", return_value=[])
-def test_fetch_articles_skips_restricted_url(mock_execute, mock_parse, mock_validate, mock_warning):
+def test_fetch_articles_skips_restricted_url(mock_execute, mock_parse, mock_validate, mock_logger):
     from delivery.fetcher import fetch_articles
     result = fetch_articles(_theme(feeds=["https://192.168.1.1/feed"]))
     assert result == []
     assert not mock_parse.called, "feedparser.parse should not be called for restricted URLs"
-    assert mock_warning.called
+    assert mock_logger.warning.called
 
 
-@patch("delivery.fetcher.logging.warning")
+@patch("delivery.fetcher.logger")
 @patch("delivery.fetcher.feedparser.parse", side_effect=Exception("network error"))
 @patch("delivery.fetcher.db.execute")
-def test_fetch_articles_logs_broken_feed_with_url(mock_execute, mock_parse, mock_warning):
+def test_fetch_articles_logs_broken_feed_with_url(mock_execute, mock_parse, mock_logger):
     mock_execute.return_value = []
     from delivery.fetcher import fetch_articles
     result = fetch_articles(_theme(feeds=["https://broken.example.com/rss"]))
     assert result == []
-    assert mock_warning.called
-    log_args = mock_warning.call_args
+    assert mock_logger.warning.called
+    log_args = mock_logger.warning.call_args
     log_msg = log_args[0][0] % tuple(log_args[0][1:])
     assert "broken.example.com" in log_msg
     assert "network error" in log_msg
