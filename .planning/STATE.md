@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-03-22T11:53:51.488Z"
+last_updated: "2026-03-22T11:54:53.246Z"
 progress:
   total_phases: 2
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 5
-  completed_plans: 4
+  completed_plans: 5
 ---
 
 # Project State
@@ -47,7 +47,7 @@ See: .planning/PROJECT.md (updated 2026-03-21)
 | Plan | Name | Status |
 |------|------|--------|
 | 02-01 | Logging migration to named loggers | Done |
-| 02-02 | Structured delivery logs | Pending |
+| 02-02 | Structured delivery logs | Done |
 | 02-03 | Rate limiter | Done |
 
 ## Decisions Made
@@ -62,6 +62,8 @@ See: .planning/PROJECT.md (updated 2026-03-21)
 - [Phase 02]: OBS-D-02: caplog fixture used instead of @patch for reload test — importlib.reload() creates a new logger object bypassing the pre-patched reference
 - [Phase 02]: D-11/D-12: Sliding window using collections.deque with eviction on each call — no background cleanup needed
 - [Phase 02]: D-13/D-15: Rate limit guard placed inside text.startswith('/') block — callback queries and pending actions are never rate-limited
+- [Phase 02]: OBS-D-03: Use try/finally (approach a) rather than removing continue statements — guarantees per-theme log always emits even on early exit paths
+- [Phase 02]: OBS-D-04: articles_fetched from cache-hit path set to len(filtered articles) rather than 0, to reflect actual article count available for delivery
 
 ## Performance Metrics
 
@@ -71,11 +73,12 @@ See: .planning/PROJECT.md (updated 2026-03-21)
 | 01 | 02 | 192 | 2 | 8 |
 | 02 | 01 | 278 | 2 | 10 |
 | 02 | 03 | 111 | 2 | 3 |
+| 02 | 02 | 168 | 2 | 1 |
 
 ## Next Action
 
-Phase 02 in progress. Next: 02-02 (Structured delivery logs).
+Phase 02 complete. All plans done.
 
 ---
 *State initialized: 2026-03-21*
-*Last session: 2026-03-22 — Completed 02-01-PLAN.md*
+*Last session: 2026-03-22 — Completed 02-02-PLAN.md*
