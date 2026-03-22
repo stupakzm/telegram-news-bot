@@ -77,55 +77,86 @@ def run():
     cutoff_ts = now_ts - 24 * 3600  # only check recently posted URLs for dedup
 
     for (theme_type, theme_id), users in groups.items():
-        theme = get_theme_info(theme_type, theme_id)
-        if not theme:
-            logger.warning("Theme not found: theme_type=%s theme_id=%d", theme_type, theme_id)
-            continue
+        status = "ok"
+        articles_fetched = 0
+        articles_sent = 0
+        error_msg = None
+        theme_name = "unknown"
+        user_count = len(users)
 
-        group_theme_info[(theme_type, theme_id)] = theme
+        try:
+            theme = get_theme_info(theme_type, theme_id)
+            if not theme:
+                status = "error"
+                error_msg = "theme not found"
+                logger.warning("Theme not found: theme_type=%s theme_id=%d", theme_type, theme_id)
+                continue  # finally will emit structured log
 
-        # Step 3: cache check
-        articles = theme_cache.get_cached(theme_type, theme_id, date_str, quarter)
+            theme_name = theme["name"]
+            group_theme_info[(theme_type, theme_id)] = theme
 
-        if articles is None:
-            # Cache miss: fetch + summarize
-            try:
+            # Step 3: cache check
+            articles = theme_cache.get_cached(theme_type, theme_id, date_str, quarter)
+
+            if articles is None:
+                # Cache miss: fetch + summarize
                 raw_articles = fetch_articles(theme)
                 if not raw_articles:
-                    logger.info("No new articles for %s", theme["name"])
-                    continue
+                    status = "no_articles"
+                    continue  # finally will emit structured log
+                articles_fetched = len(raw_articles)
                 articles = summarize_articles(raw_articles, theme["hashtag"])
                 if not articles:
-                    logger.info("AI returned no summaries for %s", theme["name"])
-                    continue
-            except Exception as e:
-                logger.error("Error fetching/summarizing %s: %s", theme["name"], e)
-                continue
-            # Cache the result
-            theme_cache.set_cache(theme_type, theme_id, date_str, quarter, articles)
-        else:
-            # Cache hit: re-filter against recent posted_articles
-            posted = {
-                row["url"]
-                for row in db.execute(
-                    "SELECT url FROM posted_articles WHERE posted_at > ?", [cutoff_ts]
+                    status = "ai_empty"
+                    continue  # finally will emit structured log
+                # Cache the result
+                theme_cache.set_cache(theme_type, theme_id, date_str, quarter, articles)
+            else:
+                # Cache hit: re-filter against recent posted_articles
+                posted = {
+                    row["url"]
+                    for row in db.execute(
+                        "SELECT url FROM posted_articles WHERE posted_at > ?", [cutoff_ts]
+                    )
+                }
+                articles = [a for a in articles if a["url"] not in posted]
+                articles_fetched = len(articles)
+
+            # Step 4: fan out to each user
+            # Collect the canonical sent list for this group (same for all users, sliced per-user)
+            group_sent_articles[(theme_type, theme_id)] = articles
+
+            for user in users:
+                user_articles = articles[:user["effective_articles_per_theme"]]
+                for article in user_articles:
+                    try:
+                        post_article(user_id=user["user_id"], article=article)
+                        all_posted_urls.append(article["url"])
+                        articles_sent += 1
+                        time.sleep(0.1)  # avoid Telegram flood limits
+                    except Exception as e:
+                        logger.error("Failed to post to user %d: %s", user["user_id"], e)
+
+        except Exception as e:
+            status = "error"
+            error_msg = str(e)
+            logger.error("Unexpected error processing theme %s: %s", theme_name, e)
+        finally:
+            # Per-theme structured log entry (D-07)
+            if status == "error":
+                logger.info(
+                    "theme_id=%d theme_type=%s theme_name=%s user_count=%d "
+                    "articles_fetched=%d articles_sent=%d status=%s error=%s",
+                    theme_id, theme_type, theme_name, user_count,
+                    articles_fetched, articles_sent, status, error_msg
                 )
-            }
-            articles = [a for a in articles if a["url"] not in posted]
-
-        # Step 4: fan out to each user
-        # Collect the canonical sent list for this group (same for all users, sliced per-user)
-        group_sent_articles[(theme_type, theme_id)] = articles
-
-        for user in users:
-            user_articles = articles[:user["effective_articles_per_theme"]]
-            for article in user_articles:
-                try:
-                    post_article(user_id=user["user_id"], article=article)
-                    all_posted_urls.append(article["url"])
-                    time.sleep(0.1)  # avoid Telegram flood limits
-                except Exception as e:
-                    logger.error("Failed to post to user %d: %s", user["user_id"], e)
+            else:
+                logger.info(
+                    "theme_id=%d theme_type=%s theme_name=%s user_count=%d "
+                    "articles_fetched=%d articles_sent=%d status=%s",
+                    theme_id, theme_type, theme_name, user_count,
+                    articles_fetched, articles_sent, status
+                )
 
     # Step 5: mark URLs as posted (global dedup)
     if all_posted_urls:
