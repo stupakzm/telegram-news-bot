@@ -36,12 +36,9 @@ Users get relevant news delivered to them automatically — without having to se
 - [ ] Add Telegram webhook secret verification (reject requests missing valid secret token)
 - [ ] Fix RSS URL SSRF risk (validate against private IPs, enforce http/https scheme)
 
-**Phase 2 — New Features:**
-- [ ] Structured logging with context (replace bare `print()` / unstructured `logging`)
-- [ ] Rate limiting per user (max N commands/minute)
-- [ ] Admin dashboard command (key metrics: users, deliveries/hour, errors, revenue)
-- [ ] User feedback on articles (👍/👎 reactions, stored preferences)
-- [ ] Delivery confirmation tracking (track sent/failed per article)
+**Phase 2 — Observability & Rate Limiting:** *(Validated in Phase 02: observability-rate-limiting)*
+- ✓ Structured logging with context (replaced bare `print()` / unstructured `logging`) — Validated Phase 02
+- ✓ Rate limiting per user (5 commands/60s sliding window) — Validated Phase 02
 
 ### Out of Scope
 
@@ -91,6 +88,8 @@ This document evolves at phase transitions and milestone boundaries.
 2. Core Value check — still the right priority?
 3. Audit Out of Scope — reasons still valid?
 4. Update Context with current state
+
+Last updated: 2026-03-22
 
 ---
 *Last updated: 2026-03-21 after initialization*
