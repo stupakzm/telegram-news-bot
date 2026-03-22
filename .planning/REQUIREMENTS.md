@@ -16,9 +16,9 @@
 
 ### Observability
 
-- [ ] **OBS-01**: All `print()` statements replaced with structured `logging.getLogger()` calls
+- [x] **OBS-01**: All `print()` statements replaced with structured `logging.getLogger()` calls
 - [ ] **OBS-02**: Delivery runs emit structured log entries (theme_id, user_id, article count, status)
-- [ ] **OBS-03**: Broken feed URLs surfaced in logs with enough context to diagnose
+- [x] **OBS-03**: Broken feed URLs surfaced in logs with enough context to diagnose
 
 ### Safety
 
@@ -72,9 +72,9 @@
 | BUG-04 | Phase 1 | Done |
 | BUG-05 | Phase 1 | Done |
 | BUG-06 | Phase 1 | Done |
-| OBS-01 | Phase 2 | Pending |
+| OBS-01 | Phase 2 | Complete |
 | OBS-02 | Phase 2 | Pending |
-| OBS-03 | Phase 2 | Pending |
+| OBS-03 | Phase 2 | Complete |
 | SAFE-01 | Phase 2 | Pending |
 | SAFE-02 | Phase 1 | Done |
 | FEAT-01 | Phase 3 | Pending |
