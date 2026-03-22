@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-03-22T11:48:45.102Z"
+last_updated: "2026-03-22T11:53:51.488Z"
 progress:
   total_phases: 2
   completed_phases: 1
   total_plans: 5
-  completed_plans: 3
+  completed_plans: 4
 ---
 
 # Project State
@@ -48,7 +48,7 @@ See: .planning/PROJECT.md (updated 2026-03-21)
 |------|------|--------|
 | 02-01 | Logging migration to named loggers | Done |
 | 02-02 | Structured delivery logs | Pending |
-| 02-03 | Rate limiter | Pending |
+| 02-03 | Rate limiter | Done |
 
 ## Decisions Made
 
@@ -60,6 +60,8 @@ See: .planning/PROJECT.md (updated 2026-03-21)
 - BUG-06/SAFE-02: Extract URL validator to bot/validation.py shared module; uses ipaddress stdlib with no new dependencies
 - [Phase 02]: OBS-D-01: Idempotent setup() with _configured guard prevents double-configuration if both entry points import the same module
 - [Phase 02]: OBS-D-02: caplog fixture used instead of @patch for reload test — importlib.reload() creates a new logger object bypassing the pre-patched reference
+- [Phase 02]: D-11/D-12: Sliding window using collections.deque with eviction on each call — no background cleanup needed
+- [Phase 02]: D-13/D-15: Rate limit guard placed inside text.startswith('/') block — callback queries and pending actions are never rate-limited
 
 ## Performance Metrics
 
@@ -68,6 +70,7 @@ See: .planning/PROJECT.md (updated 2026-03-21)
 | 01 | 01 | 164 | 2 | 8 |
 | 01 | 02 | 192 | 2 | 8 |
 | 02 | 01 | 278 | 2 | 10 |
+| 02 | 03 | 111 | 2 | 3 |
 
 ## Next Action
 

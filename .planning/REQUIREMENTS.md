@@ -22,7 +22,7 @@
 
 ### Safety
 
-- [ ] **SAFE-01**: Per-user command rate limiting (max 5 commands/minute, returns friendly message)
+- [x] **SAFE-01**: Per-user command rate limiting (max 5 commands/minute, returns friendly message)
 - [x] **SAFE-02**: RSS feed URLs validated before storage (scheme, private IP block, redirect limit)
 
 ### Features
@@ -75,7 +75,7 @@
 | OBS-01 | Phase 2 | Complete |
 | OBS-02 | Phase 2 | Pending |
 | OBS-03 | Phase 2 | Complete |
-| SAFE-01 | Phase 2 | Pending |
+| SAFE-01 | Phase 2 | Complete |
 | SAFE-02 | Phase 1 | Done |
 | FEAT-01 | Phase 3 | Pending |
 | FEAT-02 | Phase 3 | Pending |
