@@ -1,5 +1,6 @@
 # bot/router.py
 import logging
+import time
 from bot.commands import start, themes, schedule, upgrade, history, addtheme, settings
 from bot.commands import payments as payments_cmd
 from bot.rate_limiter import check_rate_limit
@@ -53,6 +54,21 @@ def _handle_callback(callback_query: dict) -> None:
         schedule.handle({"from": callback_query["from"], "chat": {"id": user_id}})
     elif data == "themes:browse":
         themes.handle({"from": callback_query["from"], "chat": {"id": user_id}})
+    elif data.startswith("reaction:"):
+        parts = data.split(":", 2)
+        if len(parts) == 3:
+            reaction = parts[1]  # 'up' or 'down'
+            article_url = parts[2]
+            now_ts = int(time.time())
+            db.execute_many([(
+                "INSERT OR REPLACE INTO article_reactions "
+                "(user_id, article_url, reaction, reacted_at) "
+                "VALUES (?, ?, ?, ?)",
+                [user_id, article_url, reaction, now_ts]
+            )])
+            emoji = "\U0001f44d" if reaction == "up" else "\U0001f44e"
+            tg.answer_callback_query(callback_query["id"], text=f"{emoji} Noted!")
+            return
     tg.answer_callback_query(callback_query["id"])
 
 
