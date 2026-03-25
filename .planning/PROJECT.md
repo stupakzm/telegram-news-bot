@@ -28,17 +28,22 @@ Users get relevant news delivered to them automatically — without having to se
 
 ### Active
 
-**Phase 1 — Bug Fixes:**
-- [ ] Fix race condition in custom theme creation (`RETURNING id` instead of `last_insert_rowid`)
-- [ ] Fix Gemini fallback model name (verify correct `gemini-2.0-flash` model ID)
-- [ ] Fix payment payload crash on malformed invoice (`IndexError` on missing colon)
-- [ ] Fix silent RSS feed failures (log broken feeds at warning level)
-- [ ] Add Telegram webhook secret verification (reject requests missing valid secret token)
-- [ ] Fix RSS URL SSRF risk (validate against private IPs, enforce http/https scheme)
+**Phase 1 — Bug Fixes:** *(Validated in Phase 01: bug-fixes-security)*
+- ✓ Fix race condition in custom theme creation (`RETURNING id`) — Validated Phase 01
+- ✓ Fix Gemini fallback model name — Validated Phase 01
+- ✓ Fix payment payload crash on malformed invoice — Validated Phase 01
+- ✓ Fix silent RSS feed failures — Validated Phase 01
+- ✓ Add Telegram webhook secret verification — Validated Phase 01
+- ✓ Fix RSS URL SSRF risk — Validated Phase 01
 
 **Phase 2 — Observability & Rate Limiting:** *(Validated in Phase 02: observability-rate-limiting)*
 - ✓ Structured logging with context (replaced bare `print()` / unstructured `logging`) — Validated Phase 02
 - ✓ Rate limiting per user (5 commands/60s sliding window) — Validated Phase 02
+
+**Phase 3 — New Features:** *(Validated in Phase 03: new-features)*
+- ✓ Delivery tracking — per-article sent/failed log in delivery_log, theme errors in delivery_errors (FEAT-03) — Validated Phase 03
+- ✓ Article reaction buttons — thumbs up/down inline keyboard, stored in article_reactions via INSERT OR REPLACE (FEAT-02) — Validated Phase 03
+- ✓ /admin health dashboard — active users (7d), deliveries/hour, revenue, last 5 errors; owner-only (FEAT-01) — Validated Phase 03
 
 ### Out of Scope
 
@@ -89,7 +94,7 @@ This document evolves at phase transitions and milestone boundaries.
 3. Audit Out of Scope — reasons still valid?
 4. Update Context with current state
 
-Last updated: 2026-03-22
+Last updated: 2026-03-25 — Phase 03 complete
 
 ---
-*Last updated: 2026-03-21 after initialization*
+*Last updated: 2026-03-25 after Phase 03: new-features*
