@@ -1,4 +1,11 @@
+# Secrets
 .env
+
+# Claude Code local config (contains local machine paths, permissions)
+.claude/
+.mcp.json
+
+# Python
 __pycache__/
 *.pyc
 .pytest_cache/
