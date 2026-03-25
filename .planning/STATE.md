@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: unknown
-last_updated: "2026-03-22T12:00:01.728Z"
+status: Milestone complete
+last_updated: "2026-03-25T12:40:47.814Z"
 progress:
-  total_phases: 2
-  completed_phases: 2
-  total_plans: 5
-  completed_plans: 5
+  total_phases: 3
+  completed_phases: 3
+  total_plans: 7
+  completed_plans: 7
 ---
 
 # Project State
@@ -18,7 +18,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-21)
 
 **Core value:** Users get relevant news delivered to them automatically — without having to seek it out.
-**Current focus:** Phase 02 — observability-rate-limiting
+**Current focus:** Phase 03 — new-features
 
 ## Current Status
 
@@ -64,6 +64,12 @@ See: .planning/PROJECT.md (updated 2026-03-21)
 - [Phase 02]: D-13/D-15: Rate limit guard placed inside text.startswith('/') block — callback queries and pending actions are never rate-limited
 - [Phase 02]: OBS-D-03: Use try/finally (approach a) rather than removing continue statements — guarantees per-theme log always emits even on early exit paths
 - [Phase 02]: OBS-D-04: articles_fetched from cache-hit path set to len(filtered articles) rather than 0, to reflect actual article count available for delivery
+- [Phase 03]: D-13: delivery_log.status is 'sent' or 'failed' only — two terminal states per article per user
+- [Phase 03]: D-11: article_reactions uses composite PK (user_id, article_url) — one reaction per user per article
+- [Phase 03]: D-15: delivery_errors captures theme_id, theme_type, error_msg, occurred_at for /admin display
+- [Phase 03]: D-09: reaction callback uses data.split(':',2) — exactly 3 parts, URLs with colons parse correctly
+- [Phase 03]: D-10: reaction handler calls answer_callback_query with emoji toast then returns to prevent double generic call
+- [Phase 03]: D-01/admin: os.environ.get for OWNER_USER_ID avoids KeyError when env var absent
 
 ## Performance Metrics
 
@@ -74,6 +80,8 @@ See: .planning/PROJECT.md (updated 2026-03-21)
 | 02 | 01 | 278 | 2 | 10 |
 | 02 | 03 | 111 | 2 | 3 |
 | 02 | 02 | 168 | 2 | 1 |
+| Phase 03 P01 | 180 | 2 tasks | 2 files |
+| Phase 03 P02 | 185 | 2 tasks | 3 files |
 
 ## Next Action
 
