@@ -75,3 +75,36 @@ CREATE TABLE IF NOT EXISTS user_pending_actions (
     data       TEXT,              -- JSON blob of intermediate state (e.g. selected feed URLs)
     created_at INTEGER NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS delivery_log(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL REFERENCES users(user_id),
+    article_url TEXT NOT NULL,
+    status TEXT NOT NULL,
+    sent_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_delivery_log_user_time
+    ON delivery_log(user_id, sent_at DESC);
+
+CREATE TABLE IF NOT EXISTS article_reactions(
+    user_id INTEGER NOT NULL REFERENCES users(user_id),
+    article_url TEXT NOT NULL,
+    reaction TEXT NOT NULL,
+    reacted_at INTEGER NOT NULL,
+    PRIMARY KEY (user_id, article_url)
+);
+
+CREATE INDEX IF NOT EXISTS idx_article_reactions_reaction
+    ON article_reactions(reaction);
+
+CREATE TABLE IF NOT EXISTS delivery_errors(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    theme_id INTEGER NOT NULL,
+    theme_type TEXT NOT NULL,
+    error_msg TEXT NOT NULL,
+    occurred_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_delivery_errors_time
+    ON delivery_errors(occurred_at DESC);
