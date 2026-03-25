@@ -57,6 +57,12 @@ Plans:
 
 **Requirements:** FEAT-01, FEAT-02, FEAT-03
 
+**Plans:** 2 plans
+
+Plans:
+- [ ] 03-01-PLAN.md — Database schema (3 new tables) and delivery tracking pipeline inserts (FEAT-03)
+- [ ] 03-02-PLAN.md — Reaction buttons on articles and /admin command (FEAT-01, FEAT-02)
+
 **Deliverables:**
 - `/admin` command (owner-only): active users, deliveries/hour, recent errors, payment revenue
 - Reaction buttons on delivered articles; reactions stored per user per article
@@ -71,9 +77,9 @@ Plans:
 | Phase | Name | Requirements | Status |
 |-------|------|-------------|--------|
 | 1 | Bug Fixes & Security | BUG-01-06, SAFE-02 | Complete (2/2) |
-| 2 | 3/3 | Complete   | 2026-03-22 |
-| 3 | New Features | FEAT-01-03 | Pending |
+| 2 | Observability & Rate Limiting | OBS-01-03, SAFE-01 | Complete (3/3) |
+| 3 | New Features | FEAT-01-03 | Planned (0/2) |
 
 ---
 *Roadmap created: 2026-03-21*
-*Last updated: 2026-03-22 after phase 2 planning*
+*Last updated: 2026-03-25 after phase 3 planning*
