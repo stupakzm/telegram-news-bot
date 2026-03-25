@@ -83,6 +83,7 @@ def run():
 
     now_ts = int(time.time())
     cutoff_ts = now_ts - 24 * 3600  # only check recently posted URLs for dedup
+    delivery_log_statements: list[tuple] = []
 
     for (theme_type, theme_id), users in groups.items():
         status = "ok"
@@ -141,14 +142,29 @@ def run():
                         post_article(user_id=user["user_id"], article=article)
                         all_posted_urls.append(article["url"])
                         articles_sent += 1
+                        delivery_log_statements.append((
+                            "INSERT INTO delivery_log (user_id, article_url, status, sent_at) VALUES (?, ?, ?, ?)",
+                            [user["user_id"], article["url"], "sent", now_ts]
+                        ))
                         time.sleep(0.1)  # avoid Telegram flood limits
                     except Exception as e:
                         logger.error("Failed to post to user %d: %s", user["user_id"], e)
+                        delivery_log_statements.append((
+                            "INSERT INTO delivery_log (user_id, article_url, status, sent_at) VALUES (?, ?, ?, ?)",
+                            [user["user_id"], article["url"], "failed", now_ts]
+                        ))
 
         except Exception as e:
             status = "error"
             error_msg = str(e)
             logger.error("Unexpected error processing theme %s: %s", theme_name, e)
+            try:
+                db.execute_many([(
+                    "INSERT INTO delivery_errors (theme_id, theme_type, error_msg, occurred_at) VALUES (?, ?, ?, ?)",
+                    [theme_id, theme_type, str(e), now_ts]
+                )])
+            except Exception as db_err:
+                logger.error("Failed to write delivery_error: %s", db_err)
         finally:
             # Per-theme structured log entry (D-07)
             if status == "error":
@@ -179,6 +195,13 @@ def run():
             for url in set(all_posted_urls)
         ]
         db.execute_many(statements)
+
+    # Step 5b: batch insert delivery_log
+    if delivery_log_statements:
+        try:
+            db.execute_many(delivery_log_statements)
+        except Exception as e:
+            logger.error("Failed to write delivery_log: %s", e)
 
     # Step 6: digest history for monthly users (batch per group)
     for (theme_type, theme_id), users in groups.items():
