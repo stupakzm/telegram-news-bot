@@ -8,8 +8,9 @@ DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]  # index+1 = ISO weekda
 def set_global_schedule(user_id: int, days: list[int], hour_utc: int) -> None:
     """Upsert the global (all-themes) schedule for a user."""
     db.execute_many([
+        ("DELETE FROM user_schedules WHERE user_id = ? AND user_theme_id IS NULL", [user_id]),
         (
-            "INSERT OR REPLACE INTO user_schedules (user_id, user_theme_id, days, hour_utc) VALUES (?, NULL, ?, ?)",
+            "INSERT INTO user_schedules (user_id, user_theme_id, days, hour_utc) VALUES (?, NULL, ?, ?)",
             [user_id, json.dumps(days), hour_utc],
         ),
     ])

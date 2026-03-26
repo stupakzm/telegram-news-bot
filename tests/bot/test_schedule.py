@@ -27,6 +27,8 @@ def test_set_global_schedule_upserts(mock_execute_many, mock_send):
     from bot.commands.schedule import set_global_schedule
     set_global_schedule(user_id=1, days=[1, 3, 5], hour_utc=9)
     assert mock_execute_many.called
-    sql, args = mock_execute_many.call_args[0][0][0]
-    assert "user_schedules" in sql
-    assert 9 in args
+    statements = mock_execute_many.call_args[0][0]
+    # statements[0] = DELETE, statements[1] = INSERT
+    insert_sql, insert_args = statements[1]
+    assert "user_schedules" in insert_sql
+    assert 9 in insert_args
