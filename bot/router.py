@@ -1,7 +1,7 @@
 # bot/router.py
 import logging
 import time
-from bot.commands import start, themes, schedule, upgrade, history, addtheme, settings, admin
+from bot.commands import start, themes, schedule, upgrade, history, addtheme, settings, admin, clear
 from bot.commands import payments as payments_cmd
 from bot.rate_limiter import check_rate_limit
 import db.client as db
@@ -19,6 +19,7 @@ COMMAND_MAP = {
     "/addthememanual": ("bot.commands.addtheme", "handle_manual"),
     "/settings": ("bot.commands.settings", "handle"),
     "/admin": ("bot.commands.admin", "handle"),
+    "/clear": ("bot.commands.clear", "handle"),
 }
 
 
