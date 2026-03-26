@@ -1,4 +1,5 @@
 import os
+import time as _time
 import requests
 
 
@@ -74,3 +75,11 @@ def execute_many(statements: list[tuple]) -> None:
     ]
     if errors:
         raise RuntimeError(f"Turso pipeline errors: {errors}")
+
+
+def track_bot_message(user_id: int, message_id: int) -> None:
+    """Record a bot-sent command message ID so /clear can delete it later."""
+    execute_many([(
+        "INSERT INTO bot_messages (user_id, message_id, sent_at) VALUES (?, ?, ?)",
+        [user_id, message_id, int(_time.time())],
+    )])

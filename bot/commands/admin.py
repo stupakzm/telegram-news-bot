@@ -63,4 +63,6 @@ def handle(message: dict) -> None:
         f"\u26a0\ufe0f *Recent errors:*\n" + "\n".join(error_lines)
     )
 
-    tg.send_message(chat_id=chat_id, text=text)
+    result = tg.send_message(chat_id=chat_id, text=text)
+    if result.get("message_id"):
+        db.track_bot_message(user_id, result["message_id"])

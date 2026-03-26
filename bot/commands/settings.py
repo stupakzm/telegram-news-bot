@@ -72,4 +72,6 @@ def handle(message: dict) -> None:
     if tier == "free" and UPGRADE_ENABLED:
         buttons.append([{"text": "⭐ Upgrade Plan", "callback_data": "upgrade:show"}])
 
-    tg.send_message(chat_id=user_id, text=text, reply_markup={"inline_keyboard": buttons})
+    result = tg.send_message(chat_id=user_id, text=text, reply_markup={"inline_keyboard": buttons})
+    if result.get("message_id"):
+        db.track_bot_message(user_id, result["message_id"])

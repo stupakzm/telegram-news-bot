@@ -108,3 +108,13 @@ CREATE TABLE IF NOT EXISTS delivery_errors(
 
 CREATE INDEX IF NOT EXISTS idx_delivery_errors_time
     ON delivery_errors(occurred_at DESC);
+
+CREATE TABLE IF NOT EXISTS bot_messages (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id    INTEGER NOT NULL REFERENCES users(user_id),
+    message_id INTEGER NOT NULL,
+    sent_at    INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_bot_messages_user
+    ON bot_messages(user_id);

@@ -60,4 +60,6 @@ def handle(message: dict) -> None:
                 [{"text": "⏰ Set Schedule", "callback_data": "schedule:setup"}],
             ]
         }
-    tg.send_message(chat_id=user_id, text=text, reply_markup=keyboard)
+    result = tg.send_message(chat_id=user_id, text=text, reply_markup=keyboard)
+    if result.get("message_id"):
+        db.track_bot_message(user_id, result["message_id"])

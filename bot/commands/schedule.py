@@ -47,8 +47,10 @@ def handle(message: dict) -> None:
     if tier in ("one_time", "monthly"):
         text += "\n\n💡 _You can also set per-theme schedules after this._"
 
-    tg.send_message(chat_id=user_id, text=text, reply_markup={"inline_keyboard": day_buttons})
+    result = tg.send_message(chat_id=user_id, text=text, reply_markup={"inline_keyboard": day_buttons})
     import time as _time
+    if result.get("message_id"):
+        db.track_bot_message(user_id, result["message_id"])
     db.execute_many([
         (
             "INSERT OR REPLACE INTO user_pending_actions (user_id, action, data, created_at) "
@@ -112,10 +114,12 @@ def days_done(user_id: int, chat_id: int, message_id: int) -> None:
         )
     ])
     tg.delete_message(chat_id, message_id)
-    tg.send_message(
+    result = tg.send_message(
         chat_id=user_id,
         text="What hour (UTC) should your digest be delivered? (0–23):",
     )
+    if result.get("message_id"):
+        db.track_bot_message(user_id, result["message_id"])
 
 
 def handle_pending(message: dict, action: str, data_json: str) -> None:
@@ -137,7 +141,9 @@ def handle_pending(message: dict, action: str, data_json: str) -> None:
         # Clear pending
         db.execute_many([("DELETE FROM user_pending_actions WHERE user_id = ?", [user_id])])
         day_names = [DAYS[d - 1] for d in days]
-        tg.send_message(
+        result = tg.send_message(
             chat_id=user_id,
             text=f"✅ Schedule set: {', '.join(day_names)} at {hour:02d}:00 UTC.",
         )
+        if result.get("message_id"):
+            db.track_bot_message(user_id, result["message_id"])

@@ -29,7 +29,9 @@ def handle(message: dict) -> None:
                 text = "📚 Digest history is available on the *Monthly plan*.\n\nUse /upgrade to unlock."
         else:
             text = "📚 Digest history will be available soon. Stay tuned!"
-        tg.send_message(chat_id=user_id, text=text)
+        result = tg.send_message(chat_id=user_id, text=text)
+        if result.get("message_id"):
+            db.track_bot_message(user_id, result["message_id"])
         return
 
     history = db.execute(
@@ -57,4 +59,6 @@ def handle(message: dict) -> None:
     if len(text) > 4000:
         text = text[:4000] + "\n\n_(truncated)_"
 
-    tg.send_message(chat_id=user_id, text=text)
+    result = tg.send_message(chat_id=user_id, text=text)
+    if result.get("message_id"):
+        db.track_bot_message(user_id, result["message_id"])

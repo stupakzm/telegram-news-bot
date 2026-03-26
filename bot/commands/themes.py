@@ -100,8 +100,10 @@ def handle(message: dict) -> None:
     user_id = message["from"]["id"]
     chat_id = message["chat"]["id"]
 
-    tg.send_message(
+    result = tg.send_message(
         chat_id=chat_id,
         text="*Your Themes*\n\nTap a theme to subscribe or unsubscribe:",
         reply_markup=_build_keyboard(user_id),
     )
+    if result.get("message_id"):
+        db.track_bot_message(user_id, result["message_id"])
