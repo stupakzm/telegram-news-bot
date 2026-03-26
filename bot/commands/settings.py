@@ -3,6 +3,7 @@ import json
 from datetime import datetime, timezone
 import db.client as db
 import bot.telegram as tg
+from bot.config import UPGRADE_ENABLED
 
 
 def handle(message: dict) -> None:
@@ -68,7 +69,7 @@ def handle(message: dict) -> None:
         [{"text": "📰 Manage Themes", "callback_data": "themes:browse"}],
         [{"text": "⏰ Change Schedule", "callback_data": "schedule:setup"}],
     ]
-    if tier == "free":
+    if tier == "free" and UPGRADE_ENABLED:
         buttons.append([{"text": "⭐ Upgrade Plan", "callback_data": "upgrade:show"}])
 
     tg.send_message(chat_id=user_id, text=text, reply_markup={"inline_keyboard": buttons})

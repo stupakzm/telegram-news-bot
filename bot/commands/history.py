@@ -3,6 +3,7 @@ import json
 from datetime import datetime, timezone
 import db.client as db
 import bot.telegram as tg
+from bot.config import UPGRADE_ENABLED
 
 MAX_HISTORY = 30
 
@@ -21,10 +22,13 @@ def handle(message: dict) -> None:
         tier = "free"
 
     if tier != "monthly":
-        if tier == "one_time":
-            text = "📚 Digest history is available on the *Monthly plan*.\n\nUse /upgrade to switch to Monthly."
+        if UPGRADE_ENABLED:
+            if tier == "one_time":
+                text = "📚 Digest history is available on the *Monthly plan*.\n\nUse /upgrade to switch to Monthly."
+            else:
+                text = "📚 Digest history is available on the *Monthly plan*.\n\nUse /upgrade to unlock."
         else:
-            text = "📚 Digest history is available on the *Monthly plan*.\n\nUse /upgrade to unlock."
+            text = "📚 Digest history will be available soon. Stay tuned!"
         tg.send_message(chat_id=user_id, text=text)
         return
 

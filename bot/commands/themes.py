@@ -1,6 +1,7 @@
 # bot/commands/themes.py
 import db.client as db
 import bot.telegram as tg
+from bot.config import UPGRADE_ENABLED
 
 TIER_THEME_LIMITS = {"free": 5, "one_time": 6, "monthly": 9}
 
@@ -34,13 +35,12 @@ def add_theme(user_id: int, theme_type: str, theme_id: int) -> bool:
 
     count = _get_user_theme_count(user_id)  # second DB call
     if count >= limit:
-        tg.send_message(
-            chat_id=user_id,
-            text=(
-                f"You've reached the {limit}-theme limit for your plan. "
-                f"Use /upgrade to add more themes."
-            ),
+        msg = (
+            f"You've reached the {limit}-theme limit for your plan. Use /upgrade to add more themes."
+            if UPGRADE_ENABLED else
+            f"You've reached the {limit}-theme limit for your plan. More options coming soon!"
         )
+        tg.send_message(chat_id=user_id, text=msg)
         return False
 
     articles = 2 if tier == "monthly" else 1
