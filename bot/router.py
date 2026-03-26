@@ -29,9 +29,13 @@ def _handle_callback(callback_query: dict) -> None:
     if data.startswith("themes:add:"):
         _, _, theme_type, theme_id = data.split(":")
         themes.add_theme(user_id, theme_type, int(theme_id))
+        msg = callback_query.get("message", {})
+        themes.refresh_keyboard(user_id, msg["chat"]["id"], msg["message_id"])
     elif data.startswith("themes:remove:"):
         _, _, theme_type, theme_id = data.split(":")
         themes.remove_theme(user_id, theme_type, int(theme_id))
+        msg = callback_query.get("message", {})
+        themes.refresh_keyboard(user_id, msg["chat"]["id"], msg["message_id"])
     elif data.startswith("pay:"):
         tier = data.split(":", 1)[1]
         payments_cmd.send_invoice(user_id, tier)

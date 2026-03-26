@@ -64,17 +64,11 @@ def remove_theme(user_id: int, theme_type: str, theme_id: int) -> None:
     ])
 
 
-def handle(message: dict) -> None:
-    """Show user's theme subscriptions with inline toggle buttons."""
-    user_id = message["from"]["id"]
-    chat_id = message["chat"]["id"]
-
-    # First DB call: get all active themes
+def _build_keyboard(user_id: int) -> dict:
+    """Build the themes inline keyboard for a user."""
     all_themes = db.execute(
         "SELECT id, name, hashtag FROM themes WHERE is_active = 1 ORDER BY id"
     )
-
-    # Second DB call: get user's subscribed theme ids
     subscribed = _get_user_theme_ids(user_id)
 
     buttons = []
@@ -87,15 +81,27 @@ def handle(message: dict) -> None:
             "callback_data": f"themes:{action}:default:{t['id']}",
         }])
 
-    # Third DB call: get user's tier for paid-tier custom theme buttons
     tier_rows = db.execute("SELECT tier FROM users WHERE user_id = ?", [user_id])
     tier = tier_rows[0].get("tier", "free") if tier_rows else "free"
     if tier in ("one_time", "monthly"):
         buttons.append([{"text": "➕ Add Custom Theme (AI)", "callback_data": "addtheme:ai"}])
         buttons.append([{"text": "➕ Add Custom Theme (Manual)", "callback_data": "addtheme:manual"}])
 
+    return {"inline_keyboard": buttons}
+
+
+def refresh_keyboard(user_id: int, chat_id: int, message_id: int) -> None:
+    """Update the themes keyboard in-place after a subscribe/unsubscribe action."""
+    tg.edit_message_reply_markup(chat_id, message_id, _build_keyboard(user_id))
+
+
+def handle(message: dict) -> None:
+    """Show user's theme subscriptions with inline toggle buttons."""
+    user_id = message["from"]["id"]
+    chat_id = message["chat"]["id"]
+
     tg.send_message(
         chat_id=chat_id,
         text="*Your Themes*\n\nTap a theme to subscribe or unsubscribe:",
-        reply_markup={"inline_keyboard": buttons},
+        reply_markup=_build_keyboard(user_id),
     )
