@@ -27,6 +27,12 @@ def edit_message_reply_markup(chat_id: int, message_id: int, reply_markup: dict)
                   timeout=10)
 
 
+def delete_message(chat_id: int, message_id: int) -> None:
+    requests.post(_url("deleteMessage"),
+                  json={"chat_id": chat_id, "message_id": message_id},
+                  timeout=10)
+
+
 def answer_callback_query(callback_query_id: str, text: str = "") -> None:
     requests.post(_url("answerCallbackQuery"),
                   json={"callback_query_id": callback_query_id, "text": text},

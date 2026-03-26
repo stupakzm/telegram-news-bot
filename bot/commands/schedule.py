@@ -57,8 +57,8 @@ def handle(message: dict) -> None:
     ])
 
 
-def toggle_day(user_id: int, day_idx: int) -> None:
-    """Toggle a day in the pending schedule selection and redraw buttons."""
+def toggle_day(user_id: int, day_idx: int, chat_id: int, message_id: int) -> None:
+    """Toggle a day in the pending schedule selection and update buttons in-place."""
     rows = db.execute(
         "SELECT data FROM user_pending_actions WHERE user_id = ? AND action = 'schedule_days'",
         [user_id],
@@ -80,21 +80,16 @@ def toggle_day(user_id: int, day_idx: int) -> None:
             [user_id, json.dumps(data), int(_time.time())],
         )
     ])
-    # Redraw buttons
     day_buttons = [
-        [{"text": f"{'✅' if i + 1 in selected else ''}{day}", "callback_data": f"schedule:day:{i + 1}"}]
+        [{"text": f"{'✅ ' if i + 1 in selected else ''}{day}", "callback_data": f"schedule:day:{i + 1}"}]
         for i, day in enumerate(DAYS)
     ]
     day_buttons.append([{"text": "✅ Done selecting days", "callback_data": "schedule:days_done"}])
-    tg.send_message(
-        chat_id=user_id,
-        text="Tap days to toggle, then tap Done:",
-        reply_markup={"inline_keyboard": day_buttons},
-    )
+    tg.edit_message_reply_markup(chat_id, message_id, {"inline_keyboard": day_buttons})
 
 
-def days_done(user_id: int) -> None:
-    """User confirmed day selection — ask for hour."""
+def days_done(user_id: int, chat_id: int, message_id: int) -> None:
+    """User confirmed day selection — remove the form and ask for hour."""
     rows = db.execute(
         "SELECT data FROM user_pending_actions WHERE user_id = ? AND action = 'schedule_days'",
         [user_id],
@@ -115,6 +110,7 @@ def days_done(user_id: int) -> None:
             [user_id, json.dumps(data), int(_time.time())],
         )
     ])
+    tg.delete_message(chat_id, message_id)
     tg.send_message(
         chat_id=user_id,
         text="What hour (UTC) should your digest be delivered? (0–23):",

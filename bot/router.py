@@ -52,9 +52,11 @@ def _handle_callback(callback_query: dict) -> None:
         addtheme.feeds_done(user_id)
     elif data.startswith("schedule:day:"):
         day_idx = int(data.split(":")[2])
-        schedule.toggle_day(user_id, day_idx)
+        msg = callback_query.get("message", {})
+        schedule.toggle_day(user_id, day_idx, msg["chat"]["id"], msg["message_id"])
     elif data == "schedule:days_done":
-        schedule.days_done(user_id)
+        msg = callback_query.get("message", {})
+        schedule.days_done(user_id, msg["chat"]["id"], msg["message_id"])
     elif data == "schedule:setup":
         schedule.handle({"from": callback_query["from"], "chat": {"id": user_id}})
     elif data == "themes:browse":
