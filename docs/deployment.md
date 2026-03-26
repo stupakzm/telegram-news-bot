@@ -67,7 +67,8 @@ This guide covers everything from zero to a running bot: creating every account 
    turso db show telegram-news-bot
    ```
    Copy the **URL** field — looks like `libsql://telegram-news-bot-yourname.turso.io`
-   - Save it as `TURSO_URL`
+   - **Replace `libsql://` with `https://`** before saving
+   - Save it as `TURSO_URL` (e.g. `https://telegram-news-bot-yourname.turso.io`)
 
 6. Create an auth token:
    ```bash
@@ -132,9 +133,18 @@ python -c "import secrets; print(secrets.token_hex(32))"
 ```bash
 git clone https://github.com/YOUR_USERNAME/telegram-news-bot.git
 cd telegram-news-bot
+
+# Create and activate a virtual environment (required on Debian/Ubuntu)
+python3 -m venv .venv
+source .venv/bin/activate
+
 pip install -r requirements.txt
 pip install -r requirements-dev.txt   # for running tests
 ```
+
+> **Note:** On Debian/Ubuntu, Python is externally managed — always use a venv.
+> After activating, all `python` and `pip` commands use the venv automatically.
+> Re-activate in future sessions with `source .venv/bin/activate`.
 
 ### 2.2 Create the .env File
 
@@ -145,7 +155,7 @@ cp .env.example .env
 Open `.env` and fill in every value:
 
 ```env
-TURSO_URL=libsql://telegram-news-bot-yourname.turso.io
+TURSO_URL=https://telegram-news-bot-yourname.turso.io
 TURSO_TOKEN=your_turso_token_here
 TELEGRAM_BOT_TOKEN=7123456789:AAF...
 GEMINI_API_KEY=AIzaSy...

@@ -13,7 +13,7 @@ COMMAND_MAP = {
     "/start": ("bot.commands.start", "handle"),
     "/themes": ("bot.commands.themes", "handle"),
     "/schedule": ("bot.commands.schedule", "handle"),
-    "/upgrade": ("bot.commands.upgrade", "handle"),
+    # "/upgrade": ("bot.commands.upgrade", "handle"),  # disabled until Stars payments available
     "/history": ("bot.commands.history", "handle"),
     "/addtheme": ("bot.commands.addtheme", "handle_ai"),
     "/addthememanual": ("bot.commands.addtheme", "handle_manual"),
@@ -35,8 +35,8 @@ def _handle_callback(callback_query: dict) -> None:
     elif data.startswith("pay:"):
         tier = data.split(":", 1)[1]
         payments_cmd.send_invoice(user_id, tier)
-    elif data.startswith("upgrade:show"):
-        upgrade.handle({"from": callback_query["from"], "chat": {"id": user_id}})
+    # elif data.startswith("upgrade:show"):  # disabled until Stars payments available
+    #     upgrade.handle({"from": callback_query["from"], "chat": {"id": user_id}})
     elif data.startswith("addtheme:ai"):
         addtheme.handle_ai({"from": callback_query["from"], "chat": {"id": user_id}})
     elif data.startswith("addtheme:manual"):
