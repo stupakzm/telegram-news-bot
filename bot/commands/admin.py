@@ -22,14 +22,14 @@ def handle(message: dict) -> None:
 
     # Active users in last 7 days (D-02)
     active_rows = db.execute(
-        "SELECT COUNT(DISTINCT user_id) as count FROM digest_history WHERE sent_at > ?",
+        "SELECT COUNT(DISTINCT user_id) as count FROM delivery_log WHERE sent_at > ? AND status = 'sent'",
         [now_ts - 7 * 24 * 3600]
     )
     active_users = active_rows[0]["count"] if active_rows else 0
 
     # Deliveries in last hour (D-05)
     delivery_rows = db.execute(
-        "SELECT COUNT(*) as count FROM digest_history WHERE sent_at > ?",
+        "SELECT COUNT(*) as count FROM delivery_log WHERE sent_at > ? AND status = 'sent'",
         [now_ts - 3600]
     )
     deliveries_hour = delivery_rows[0]["count"] if delivery_rows else 0
