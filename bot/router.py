@@ -66,14 +66,26 @@ def _handle_callback(callback_query: dict) -> None:
         parts = data.split(":", 2)
         if len(parts) == 3:
             reaction = parts[1]  # 'up' or 'down'
-            article_url = parts[2]
-            now_ts = int(time.time())
-            db.execute_many([(
-                "INSERT OR REPLACE INTO article_reactions "
-                "(user_id, article_url, reaction, reacted_at) "
-                "VALUES (?, ?, ?, ?)",
-                [user_id, article_url, reaction, now_ts]
-            )])
+            url_key = parts[2]
+            # Resolve short hash back to full URL via delivery_log
+            import hashlib
+            rows = db.execute(
+                "SELECT article_url FROM delivery_log WHERE user_id = ? ORDER BY sent_at DESC LIMIT 200",
+                [user_id],
+            )
+            article_url = next(
+                (r["article_url"] for r in rows
+                 if hashlib.md5(r["article_url"].encode()).hexdigest()[:16] == url_key),
+                None,
+            )
+            if article_url:
+                now_ts = int(time.time())
+                db.execute_many([(
+                    "INSERT OR REPLACE INTO article_reactions "
+                    "(user_id, article_url, reaction, reacted_at) "
+                    "VALUES (?, ?, ?, ?)",
+                    [user_id, article_url, reaction, now_ts]
+                )])
             emoji = "\U0001f44d" if reaction == "up" else "\U0001f44e"
             tg.answer_callback_query(callback_query["id"], text=f"{emoji} Noted!")
             return
