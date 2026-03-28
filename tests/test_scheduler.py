@@ -1,10 +1,110 @@
 import pytest
 from unittest.mock import patch, MagicMock
-import os, time
+import os, time, json, sqlite3
 
 os.environ.setdefault("TURSO_URL", "https://test.turso.io")
 os.environ.setdefault("TURSO_TOKEN", "test-token")
 os.environ.setdefault("TELEGRAM_BOT_TOKEN", "test-token")
+
+
+# ---------------------------------------------------------------------------
+# Helpers: run the real get_due_deliveries SQL against an in-memory SQLite DB
+# ---------------------------------------------------------------------------
+
+_SCHEMA_PATH = os.path.join(os.path.dirname(__file__), "..", "db", "schema.sql")
+
+
+def _make_db():
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    with open(_SCHEMA_PATH) as f:
+        conn.executescript(f.read())
+    return conn
+
+
+def _get_due_rows(conn, hour_utc: int, weekday: int) -> list[dict]:
+    """Run the scheduler query directly on a SQLite connection."""
+    cur = conn.execute(
+        """
+        SELECT
+            u.user_id, u.tier, u.tier_expires_at, u.last_reminder_at,
+            ut.theme_type, ut.theme_id, ut.articles_per_theme
+        FROM user_schedules us
+        JOIN users u ON u.user_id = us.user_id
+        JOIN user_themes ut ON (
+            (us.user_theme_id IS NOT NULL AND ut.id = us.user_theme_id)
+            OR (us.user_theme_id IS NULL AND ut.user_id = u.user_id)
+        )
+        WHERE us.hour_utc = ?
+          AND EXISTS (
+            SELECT 1 FROM json_each(us.days) WHERE CAST(value AS INTEGER) = ?
+          )
+        """,
+        [hour_utc, weekday],
+    )
+    return [dict(row) for row in cur.fetchall()]
+
+
+def test_global_schedule_expands_to_all_user_themes():
+    """A NULL user_theme_id (global schedule) must yield one row per subscribed theme."""
+    conn = _make_db()
+    now = int(time.time())
+    conn.execute("INSERT INTO users (user_id, tier, created_at) VALUES (1, 'free', ?)", [now])
+    conn.execute("INSERT INTO themes (id, name, hashtag, rss_feeds, is_active) VALUES (10, 'Tech', '#tech', '[]', 1)")
+    conn.execute("INSERT INTO themes (id, name, hashtag, rss_feeds, is_active) VALUES (20, 'Sports', '#sports', '[]', 1)")
+    conn.execute(
+        "INSERT INTO user_themes (id, user_id, theme_type, theme_id, articles_per_theme) VALUES (1, 1, 'default', 10, 1)"
+    )
+    conn.execute(
+        "INSERT INTO user_themes (id, user_id, theme_type, theme_id, articles_per_theme) VALUES (2, 1, 'default', 20, 1)"
+    )
+    # Global schedule — user_theme_id = NULL
+    conn.execute(
+        "INSERT INTO user_schedules (user_id, user_theme_id, days, hour_utc) VALUES (1, NULL, '[1,3,5]', 9)"
+    )
+    conn.commit()
+
+    rows = _get_due_rows(conn, hour_utc=9, weekday=1)  # Monday
+
+    assert len(rows) == 2, f"Expected 2 rows (one per theme), got {len(rows)}: {rows}"
+    theme_ids = {r["theme_id"] for r in rows}
+    assert theme_ids == {10, 20}
+    for r in rows:
+        assert r["theme_type"] == "default"
+
+
+def test_global_schedule_wrong_hour_returns_nothing():
+    conn = _make_db()
+    now = int(time.time())
+    conn.execute("INSERT INTO users (user_id, tier, created_at) VALUES (1, 'free', ?)", [now])
+    conn.execute("INSERT INTO themes (id, name, hashtag, rss_feeds, is_active) VALUES (10, 'Tech', '#tech', '[]', 1)")
+    conn.execute(
+        "INSERT INTO user_themes (id, user_id, theme_type, theme_id, articles_per_theme) VALUES (1, 1, 'default', 10, 1)"
+    )
+    conn.execute(
+        "INSERT INTO user_schedules (user_id, user_theme_id, days, hour_utc) VALUES (1, NULL, '[1]', 9)"
+    )
+    conn.commit()
+
+    rows = _get_due_rows(conn, hour_utc=10, weekday=1)
+    assert rows == []
+
+
+def test_global_schedule_wrong_day_returns_nothing():
+    conn = _make_db()
+    now = int(time.time())
+    conn.execute("INSERT INTO users (user_id, tier, created_at) VALUES (1, 'free', ?)", [now])
+    conn.execute("INSERT INTO themes (id, name, hashtag, rss_feeds, is_active) VALUES (10, 'Tech', '#tech', '[]', 1)")
+    conn.execute(
+        "INSERT INTO user_themes (id, user_id, theme_type, theme_id, articles_per_theme) VALUES (1, 1, 'default', 10, 1)"
+    )
+    conn.execute(
+        "INSERT INTO user_schedules (user_id, user_theme_id, days, hour_utc) VALUES (1, NULL, '[2,4]', 9)"
+    )
+    conn.commit()
+
+    rows = _get_due_rows(conn, hour_utc=9, weekday=1)  # Monday = 1, but schedule is Tue/Thu
+    assert rows == []
 
 
 def _user(tier="free", expires=None, reminder=None):
