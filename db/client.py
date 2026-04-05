@@ -3,6 +3,10 @@ import time as _time
 import requests
 
 
+_RETRY_ATTEMPTS = 3
+_RETRY_BACKOFF = [1, 2]  # seconds to wait before attempt 2, 3
+
+
 def _url() -> str:
     return os.environ["TURSO_URL"].rstrip("/")
 
@@ -36,14 +40,29 @@ def _arg(a) -> dict:
     return {"type": "text", "value": str(a)}
 
 
+def _post_with_retry(url: str, headers: dict, body: dict) -> requests.Response:
+    """POST to Turso with retry on connection/timeout errors."""
+    last_exc: Exception | None = None
+    for attempt in range(_RETRY_ATTEMPTS):
+        try:
+            resp = requests.post(url, headers=headers, json=body, timeout=15)
+            return resp
+        except (requests.exceptions.ConnectTimeout,
+                requests.exceptions.ReadTimeout,
+                requests.exceptions.ConnectionError) as exc:
+            last_exc = exc
+            if attempt < len(_RETRY_BACKOFF):
+                _time.sleep(_RETRY_BACKOFF[attempt])
+    raise last_exc
+
+
 def execute(sql: str, args: list = None) -> list[dict]:
     """Execute a single SQL statement, return list of row dicts."""
     stmt = {"sql": sql, "args": [_arg(a) for a in (args or [])]}
-    resp = requests.post(
+    resp = _post_with_retry(
         f"{_url()}/v2/pipeline",
-        headers=_headers(),
-        json={"requests": [{"type": "execute", "stmt": stmt}]},
-        timeout=10,
+        _headers(),
+        {"requests": [{"type": "execute", "stmt": stmt}]},
     )
     resp.raise_for_status()
     result_obj = resp.json()["results"][0]
@@ -60,11 +79,10 @@ def execute_many(statements: list[tuple]) -> None:
         {"type": "execute", "stmt": {"sql": sql, "args": [_arg(a) for a in (args or [])]}}
         for sql, args in statements
     ]
-    resp = requests.post(
+    resp = _post_with_retry(
         f"{_url()}/v2/pipeline",
-        headers=_headers(),
-        json={"requests": requests_body},
-        timeout=10,
+        _headers(),
+        {"requests": requests_body},
     )
     resp.raise_for_status()
     results = resp.json()["results"]

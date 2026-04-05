@@ -1,5 +1,6 @@
 import hashlib
 import os
+import re
 import requests
 
 
@@ -8,6 +9,14 @@ def _url_key(url: str) -> str:
     return hashlib.md5(url.encode()).hexdigest()[:16]
 
 TELEGRAM_API = "https://api.telegram.org/bot{token}/{method}"
+
+# Characters that must be escaped in MarkdownV2 (outside entities)
+_MDV2_SPECIAL = re.compile(r"([_*\[\]()~`>#+\-=|{}.!\\])")
+
+
+def _escape_mdv2(text: str) -> str:
+    """Escape all MarkdownV2 special characters in plain text."""
+    return _MDV2_SPECIAL.sub(r"\\\1", text)
 
 
 def _bot_url(method: str) -> str:
@@ -18,7 +27,7 @@ def _send_message(chat_id: int, text: str, reply_to_message_id: int = None, repl
     payload = {
         "chat_id": chat_id,
         "text": text,
-        "parse_mode": "Markdown",
+        "parse_mode": "MarkdownV2",
         "disable_web_page_preview": True,
     }
     if reply_to_message_id:
@@ -33,12 +42,15 @@ def _send_message(chat_id: int, text: str, reply_to_message_id: int = None, repl
 
 
 def format_post(article: dict) -> str:
-    hashtags = " ".join(article.get("hashtags", []))
+    title = _escape_mdv2(article["title"])
+    summary = _escape_mdv2(article["summary"])
+    hashtags = _escape_mdv2(" ".join(article.get("hashtags", [])))
+    url = article["url"]  # URLs inside [...](url) — the URL part is not escaped
     return (
-        f"🔹 *{article['title']}*\n\n"
-        f"{article['summary']}\n\n"
+        f"\U0001f539 *{title}*\n\n"
+        f"{summary}\n\n"
         f"{hashtags}\n"
-        f"🔗 {article['url']}"
+        f"\U0001f517 {_escape_mdv2(url)}"
     )
 
 
@@ -55,7 +67,7 @@ def post_article(user_id: int, article: dict) -> None:
     result = _send_message(chat_id=user_id, text=text, reply_markup=reply_markup)
 
     if article.get("is_important") and article.get("importance_detail"):
-        followup = f"🧵 *Why this matters:*\n{article['importance_detail']}"
+        followup = f"\U0001f9f5 *Why this matters:*\n{_escape_mdv2(article['importance_detail'])}"
         _send_message(
             chat_id=user_id,
             text=followup,

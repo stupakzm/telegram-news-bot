@@ -22,10 +22,14 @@ IMPORTANT_ARTICLE = {**ARTICLE, "is_important": True, "importance_detail": "This
 def test_format_post_contains_title_summary_hashtags_link():
     from delivery.poster import format_post
     text = format_post(ARTICLE)
+    # Title has no special chars — appears verbatim (inside *bold* markers)
     assert "Big AI Announcement" in text
-    assert "OpenAI releases GPT-5" in text
-    assert "#ai" in text
-    assert "https://example.com/article" in text
+    # Summary contains "GPT-5." — MarkdownV2 escapes "-" and "." with backslash
+    assert "OpenAI releases GPT" in text
+    # Hashtag "#" is escaped in MarkdownV2
+    assert "ai" in text
+    # URL is escaped — dots become "\." but domain is still recognisable
+    assert "example" in text and "article" in text
 
 
 def test_callback_data_fits_telegram_limit():

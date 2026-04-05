@@ -10,6 +10,8 @@ GEMINI_FALLBACK = "gemini-2.0-flash"
 GROQ_MODEL = "llama-3.3-70b-versatile"
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 
+MAX_ARTICLES_PER_PROMPT = 15  # cap to avoid token/payload limits on all AI providers
+
 PROMPT_TEMPLATE = """\
 You are a news summarizer for a Telegram bot. Analyze the articles below and return a JSON array.
 
@@ -81,6 +83,8 @@ def summarize_articles(articles: list[dict], hashtag: str) -> list[dict]:
     if not articles:
         return []
 
+    # Cap article count to prevent token/payload overflow across all AI providers
+    articles = articles[:MAX_ARTICLES_PER_PROMPT]
     prompt = _build_prompt(articles, hashtag)
 
     provider_names = [
