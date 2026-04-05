@@ -17,7 +17,7 @@
 ### Observability
 
 - [x] **OBS-01**: All `print()` statements replaced with structured `logging.getLogger()` calls
-- [ ] **OBS-02**: Delivery runs emit structured log entries (theme_id, user_id, article count, status)
+- [x] **OBS-02**: Delivery runs emit structured log entries (theme_id, user_id, article count, status)
 - [x] **OBS-03**: Broken feed URLs surfaced in logs with enough context to diagnose
 
 ### Safety
@@ -27,9 +27,9 @@
 
 ### Features
 
-- [ ] **FEAT-01**: `/admin` command (bot owner only) shows active users, deliveries/hour, recent errors
-- [ ] **FEAT-02**: Article messages include 👍/👎 reaction buttons; reactions stored per user per article
-- [ ] **FEAT-03**: Delivery pipeline tracks sent/failed status per article per user
+- [x] **FEAT-01**: `/admin` command (bot owner only) shows active users, deliveries/hour, recent errors
+- [x] **FEAT-02**: Article messages include 👍/👎 reaction buttons; reactions stored per user per article
+- [x] **FEAT-03**: Delivery pipeline tracks sent/failed status per article per user
 
 ## v2 Requirements
 
@@ -73,13 +73,13 @@
 | BUG-05 | Phase 1 | Done |
 | BUG-06 | Phase 1 | Done |
 | OBS-01 | Phase 2 | Complete |
-| OBS-02 | Phase 2 | Pending |
+| OBS-02 | Phase 2 | Complete |
 | OBS-03 | Phase 2 | Complete |
 | SAFE-01 | Phase 2 | Complete |
 | SAFE-02 | Phase 1 | Done |
-| FEAT-01 | Phase 3 | Pending |
-| FEAT-02 | Phase 3 | Pending |
-| FEAT-03 | Phase 3 | Pending |
+| FEAT-01 | Phase 3 | Complete |
+| FEAT-02 | Phase 3 | Complete |
+| FEAT-03 | Phase 3 | Complete |
 
 **Coverage:**
 - v1 requirements: 14 total

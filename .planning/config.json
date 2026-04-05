@@ -1,7 +1,7 @@
 {
   "mode": "interactive",
   "granularity": "coarse",
-  "model_profile": "quality",
+  "model_profile": "turbo",
   "commit_docs": true,
   "search_gitignored": false,
   "branching_strategy": "none",
@@ -11,11 +11,9 @@
     "research": true,
     "plan_check": true,
     "verifier": true,
-    "nyquist_validation": false
+    "nyquist_validation": false,
+    "_auto_chain_active": false
   },
   "parallelization": true,
-  "brave_search": false,
-  "model_overrides": {
-    "gsd-executor": "ollama:qwen2.5-coder:14b"
-  }
+  "brave_search": false
 }
