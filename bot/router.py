@@ -1,7 +1,7 @@
 # bot/router.py
 import logging
 import time
-from bot.commands import start, themes, schedule, upgrade, history, addtheme, settings, admin
+from bot.commands import start, themes, schedule, upgrade, history, addtheme, settings, admin, clear
 from bot.commands import payments as payments_cmd
 from bot.rate_limiter import check_rate_limit
 import db.client as db
@@ -13,12 +13,13 @@ COMMAND_MAP = {
     "/start": ("bot.commands.start", "handle"),
     "/themes": ("bot.commands.themes", "handle"),
     "/schedule": ("bot.commands.schedule", "handle"),
-    "/upgrade": ("bot.commands.upgrade", "handle"),
+    # "/upgrade": ("bot.commands.upgrade", "handle"),  # disabled until Stars payments available
     "/history": ("bot.commands.history", "handle"),
     "/addtheme": ("bot.commands.addtheme", "handle_ai"),
     "/addthememanual": ("bot.commands.addtheme", "handle_manual"),
     "/settings": ("bot.commands.settings", "handle"),
     "/admin": ("bot.commands.admin", "handle"),
+    "/clear": ("bot.commands.clear", "handle"),
 }
 
 
@@ -29,14 +30,18 @@ def _handle_callback(callback_query: dict) -> None:
     if data.startswith("themes:add:"):
         _, _, theme_type, theme_id = data.split(":")
         themes.add_theme(user_id, theme_type, int(theme_id))
+        msg = callback_query.get("message", {})
+        themes.refresh_keyboard(user_id, msg["chat"]["id"], msg["message_id"])
     elif data.startswith("themes:remove:"):
         _, _, theme_type, theme_id = data.split(":")
         themes.remove_theme(user_id, theme_type, int(theme_id))
+        msg = callback_query.get("message", {})
+        themes.refresh_keyboard(user_id, msg["chat"]["id"], msg["message_id"])
     elif data.startswith("pay:"):
         tier = data.split(":", 1)[1]
         payments_cmd.send_invoice(user_id, tier)
-    elif data.startswith("upgrade:show"):
-        upgrade.handle({"from": callback_query["from"], "chat": {"id": user_id}})
+    # elif data.startswith("upgrade:show"):  # disabled until Stars payments available
+    #     upgrade.handle({"from": callback_query["from"], "chat": {"id": user_id}})
     elif data.startswith("addtheme:ai"):
         addtheme.handle_ai({"from": callback_query["from"], "chat": {"id": user_id}})
     elif data.startswith("addtheme:manual"):
@@ -48,9 +53,11 @@ def _handle_callback(callback_query: dict) -> None:
         addtheme.feeds_done(user_id)
     elif data.startswith("schedule:day:"):
         day_idx = int(data.split(":")[2])
-        schedule.toggle_day(user_id, day_idx)
+        msg = callback_query.get("message", {})
+        schedule.toggle_day(user_id, day_idx, msg["chat"]["id"], msg["message_id"])
     elif data == "schedule:days_done":
-        schedule.days_done(user_id)
+        msg = callback_query.get("message", {})
+        schedule.days_done(user_id, msg["chat"]["id"], msg["message_id"])
     elif data == "schedule:setup":
         schedule.handle({"from": callback_query["from"], "chat": {"id": user_id}})
     elif data == "themes:browse":
@@ -59,14 +66,26 @@ def _handle_callback(callback_query: dict) -> None:
         parts = data.split(":", 2)
         if len(parts) == 3:
             reaction = parts[1]  # 'up' or 'down'
-            article_url = parts[2]
-            now_ts = int(time.time())
-            db.execute_many([(
-                "INSERT OR REPLACE INTO article_reactions "
-                "(user_id, article_url, reaction, reacted_at) "
-                "VALUES (?, ?, ?, ?)",
-                [user_id, article_url, reaction, now_ts]
-            )])
+            url_key = parts[2]
+            # Resolve short hash back to full URL via delivery_log
+            import hashlib
+            rows = db.execute(
+                "SELECT article_url FROM delivery_log WHERE user_id = ? ORDER BY sent_at DESC LIMIT 200",
+                [user_id],
+            )
+            article_url = next(
+                (r["article_url"] for r in rows
+                 if hashlib.md5(r["article_url"].encode()).hexdigest()[:16] == url_key),
+                None,
+            )
+            if article_url:
+                now_ts = int(time.time())
+                db.execute_many([(
+                    "INSERT OR REPLACE INTO article_reactions "
+                    "(user_id, article_url, reaction, reacted_at) "
+                    "VALUES (?, ?, ?, ?)",
+                    [user_id, article_url, reaction, now_ts]
+                )])
             emoji = "\U0001f44d" if reaction == "up" else "\U0001f44e"
             tg.answer_callback_query(callback_query["id"], text=f"{emoji} Noted!")
             return

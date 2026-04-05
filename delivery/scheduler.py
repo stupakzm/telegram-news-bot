@@ -23,7 +23,10 @@ def get_due_deliveries(hour_utc: int, weekday: int) -> list[dict]:
             ut.theme_type, ut.theme_id, ut.articles_per_theme
         FROM user_schedules us
         JOIN users u ON u.user_id = us.user_id
-        LEFT JOIN user_themes ut ON ut.id = us.user_theme_id
+        JOIN user_themes ut ON (
+            (us.user_theme_id IS NOT NULL AND ut.id = us.user_theme_id)
+            OR (us.user_theme_id IS NULL AND ut.user_id = u.user_id)
+        )
         WHERE us.hour_utc = ?
           AND EXISTS (
             SELECT 1 FROM json_each(us.days) WHERE CAST(value AS INTEGER) = ?

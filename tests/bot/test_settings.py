@@ -31,7 +31,12 @@ def test_settings_free_user_gets_upgrade_button(mock_execute, mock_send):
     handle(_msg())
     markup = mock_send.call_args[1].get("reply_markup", {})
     buttons = [btn for row in markup.get("inline_keyboard", []) for btn in row]
-    assert any("Upgrade" in b["text"] for b in buttons)
+    # Upgrade button shown only when UPGRADE_ENABLED is True
+    from bot.config import UPGRADE_ENABLED
+    if UPGRADE_ENABLED:
+        assert any("Upgrade" in b["text"] for b in buttons)
+    else:
+        assert not any("Upgrade" in b["text"] for b in buttons)
 
 
 @patch("bot.commands.settings.tg.send_message")

@@ -62,13 +62,14 @@ def test_webhook_no_env_secret_allows_all(mock_handle):
     h.send_response.assert_called_with(200)
 
 
+@patch("dotenv.load_dotenv")
 @patch.dict(os.environ, {}, clear=False)
-def test_webhook_logs_warning_when_secret_absent(caplog):
+def test_webhook_logs_warning_when_secret_absent(mock_load_dotenv, caplog):
     import logging
     os.environ.pop("WEBHOOK_SECRET", None)
     # Force re-import to trigger module-level check
     import importlib
     import api.webhook
-    with caplog.at_level(logging.WARNING, logger="api.webhook"):
+    with caplog.at_level(logging.WARNING):
         importlib.reload(api.webhook)
-    assert any("WEBHOOK_SECRET" in r.message for r in caplog.records)
+    assert any("WEBHOOK_SECRET" in msg for msg in caplog.messages)

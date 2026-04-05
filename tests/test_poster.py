@@ -28,12 +28,46 @@ def test_format_post_contains_title_summary_hashtags_link():
     assert "https://example.com/article" in text
 
 
+def test_callback_data_fits_telegram_limit():
+    from delivery.poster import _url_key
+    url = "https://www.theverge.com/2024/01/15/some-very-long-article-title-that-goes-on-and-on"
+    key = _url_key(url)
+    assert len(f"reaction:up:{key}") <= 64
+    assert len(f"reaction:down:{key}") <= 64
+
+
+def test_url_key_is_deterministic():
+    from delivery.poster import _url_key
+    url = "https://example.com/article"
+    assert _url_key(url) == _url_key(url)
+
+
+def test_url_key_differs_for_different_urls():
+    from delivery.poster import _url_key
+    assert _url_key("https://example.com/a") != _url_key("https://example.com/b")
+
+
 @patch("delivery.poster._send_message")
 def test_post_article_sends_one_message_for_normal(mock_send):
     mock_send.return_value = {"message_id": 1}
     from delivery.poster import post_article
     post_article(user_id=123, article=ARTICLE)
     assert mock_send.call_count == 1
+
+
+@patch("delivery.poster._send_message")
+def test_post_article_callback_data_uses_hash_not_url(mock_send):
+    mock_send.return_value = {"message_id": 1}
+    from delivery.poster import post_article, _url_key
+    post_article(user_id=123, article=ARTICLE)
+    call_kwargs = mock_send.call_args[1]
+    buttons = call_kwargs["reply_markup"]["inline_keyboard"][0]
+    up_data = buttons[0]["callback_data"]
+    down_data = buttons[1]["callback_data"]
+    expected_key = _url_key(ARTICLE["url"])
+    assert up_data == f"reaction:up:{expected_key}"
+    assert down_data == f"reaction:down:{expected_key}"
+    assert ARTICLE["url"] not in up_data  # full URL must not be in callback_data
 
 
 @patch("delivery.poster._send_message")

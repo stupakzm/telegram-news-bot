@@ -9,6 +9,7 @@ import bot.telegram as tg
 import google.generativeai as genai
 import os
 from bot.validation import validate_rss_url
+from bot.config import UPGRADE_ENABLED
 
 logger = logging.getLogger(__name__)
 
@@ -108,7 +109,10 @@ def handle_ai(message: dict) -> None:
     user_id = message["from"]["id"]
     allowed, _ = _check_access(user_id)
     if not allowed:
-        tg.send_message(chat_id=user_id, text="🔒 Custom themes require a paid plan. Use /upgrade.")
+        tg.send_message(chat_id=user_id, text=(
+            "🔒 Custom themes require a paid plan. Use /upgrade." if UPGRADE_ENABLED
+            else "🔒 Custom themes are coming soon. Stay tuned!"
+        ))
         return
     _set_pending(user_id, "addtheme_ai_topic")
     tg.send_message(
@@ -122,7 +126,10 @@ def handle_manual(message: dict) -> None:
     user_id = message["from"]["id"]
     allowed, _ = _check_access(user_id)
     if not allowed:
-        tg.send_message(chat_id=user_id, text="🔒 Custom themes require a paid plan. Use /upgrade.")
+        tg.send_message(chat_id=user_id, text=(
+            "🔒 Custom themes require a paid plan. Use /upgrade." if UPGRADE_ENABLED
+            else "🔒 Custom themes are coming soon. Stay tuned!"
+        ))
         return
     _set_pending(user_id, "addtheme_manual_urls")
     tg.send_message(

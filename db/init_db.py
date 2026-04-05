@@ -10,7 +10,10 @@ from db.client import execute_many
 with open("db/schema.sql") as f:
     raw = f.read()
 
-# Split on semicolons, skip empty statements
-statements = [(s.strip(), []) for s in raw.split(";") if s.strip()]
+# Strip inline comments before splitting (comments may contain semicolons)
+stripped = "\n".join(
+    line.split("--")[0] for line in raw.splitlines()
+)
+statements = [(s.strip(), []) for s in stripped.split(";") if s.strip()]
 execute_many(statements)
 print("Schema applied.")

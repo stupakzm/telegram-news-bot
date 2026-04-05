@@ -21,7 +21,7 @@ def test_handle_ai_blocked_for_free(mock_execute, mock_send):
     from bot.commands.addtheme import handle_ai
     handle_ai(_msg())
     text = mock_send.call_args[1].get("text", "")
-    assert "paid plan" in text or "upgrade" in text.lower()
+    assert "paid plan" in text or "upgrade" in text.lower() or "coming soon" in text.lower()
 
 
 @patch("bot.commands.addtheme.tg.send_message")
@@ -46,7 +46,7 @@ def test_handle_manual_blocked_for_free(mock_execute, mock_send):
     from bot.commands.addtheme import handle_manual
     handle_manual(_msg())
     text = mock_send.call_args[1].get("text", "")
-    assert "paid plan" in text or "upgrade" in text.lower()
+    assert "paid plan" in text or "upgrade" in text.lower() or "coming soon" in text.lower()
 
 
 # --- handle_pending: addtheme_manual_urls ---
