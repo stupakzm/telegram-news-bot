@@ -152,12 +152,6 @@ def handle_update(update: dict) -> None:
     command = text.split()[0].split("@")[0]
     entry = COMMAND_MAP.get(command)
     if entry:
-        # Track the user's own command message so /clear can delete it
-        user_id = message["from"]["id"]
-        msg_id = message.get("message_id")
-        if msg_id:
-            db.track_bot_message(user_id, msg_id)
-
         import importlib
         mod = importlib.import_module(entry[0])
         getattr(mod, entry[1])(message)
