@@ -14,7 +14,7 @@ def handle(message: dict) -> None:
     for row in rows:
         tg.delete_message(chat_id, row["message_id"])
 
-    # Also delete the /clear command message itself (not yet tracked at this point)
+    # Also delete the /clear command message itself (safety net for Turso read-after-write latency)
     tg.delete_message(chat_id, message["message_id"])
 
     db.execute_many([
