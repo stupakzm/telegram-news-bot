@@ -148,6 +148,15 @@ def _process_theme(
                         [user["user_id"], article["url"], "failed", now_ts]
                     ))
 
+        # Write delivery_log per-theme immediately so admin panel sees up-to-date counts
+        # even if other themes are still processing in parallel.
+        if delivery_log_statements:
+            try:
+                db.execute_many(delivery_log_statements)
+                delivery_log_statements = []  # mark as flushed
+            except Exception as e:
+                logger.error("Failed to write delivery_log for theme %s/%d: %s", theme_type, theme_id, e)
+
     except Exception as e:
         status = "error"
         error_msg = str(e)

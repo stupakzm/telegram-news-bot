@@ -13,15 +13,22 @@ GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 MAX_ARTICLES_PER_PROMPT = 15  # cap to avoid token/payload limits on all AI providers
 
 PROMPT_TEMPLATE = """\
-You are a news summarizer for a Telegram bot. Analyze the articles below and return a JSON array.
+You are a news summarizer for a Telegram bot delivering tech news to developers and tech-savvy readers.
 
-For each article return an object with exactly these keys:
-- "url": the article url (unchanged from input)
-- "title": the article title (unchanged from input)
-- "summary": 2-3 punchy sentences for a tech-savvy reader
+Analyze the articles below and return a JSON array. Each element must have exactly these keys:
+
+- "url": unchanged from input
+- "title": unchanged from input
+- "summary": 2-3 sentences. Write in direct, factual style — state what happened, the key details, \
+and why it matters. No filler phrases like "In this article", "The author discusses", "This piece covers", \
+"Someone explains", or any meta-references to the article itself. Write about the news, not about the article.
 - "hashtags": JSON array of 1-2 hashtags chosen from: {hashtag}
-- "is_important": true ONLY if major real-world impact (regulation, market crash, critical breach, major launch); false otherwise
-- "importance_detail": if is_important true, one paragraph of context; else empty string ""
+- "is_important": true ONLY if major real-world impact (regulation, market crash, critical security breach, \
+major product launch affecting millions); false otherwise
+- "importance_detail": if is_important true, one paragraph of concrete context (what changed, who is affected, \
+what the consequences are); else empty string ""
+- "skip": true if the article is affiliate marketing, a sponsored post, a product promotion/review written \
+to sell something, or has no real news value; false otherwise
 
 Return ONLY a valid JSON array. No markdown fences, no explanation.
 
@@ -78,6 +85,7 @@ def summarize_articles(articles: list[dict], hashtag: str) -> list[dict]:
     """
     Summarize articles using AI. Returns list of summary dicts.
     Falls back: Gemini 2.5 Flash → Gemini 2.0 Flash → Groq Llama.
+    Affiliate/sponsored articles (skip=true) are filtered out.
     Returns [] if all providers fail.
     """
     if not articles:
@@ -99,7 +107,9 @@ def summarize_articles(articles: list[dict], hashtag: str) -> list[dict]:
     ]
     for name, attempt in zip(provider_names, attempts):
         try:
-            return attempt()
+            results = attempt()
+            # Filter out affiliate/promotional articles
+            return [r for r in results if not r.get("skip")]
         except Exception as e:
             logger.warning("AI provider %s failed: %s", name, e)
             continue

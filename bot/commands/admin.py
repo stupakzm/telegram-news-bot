@@ -6,18 +6,10 @@ import bot.telegram as tg
 
 logger = logging.getLogger(__name__)
 
+_REFRESH_MARKUP = {"inline_keyboard": [[{"text": "\U0001f504 Refresh", "callback_data": "admin:refresh"}]]}
 
-def handle(message: dict) -> None:
-    """Handle /admin command. Shows bot health metrics. Owner only."""
-    user_id = message["from"]["id"]
-    chat_id = message["chat"]["id"]
 
-    # Authorization (D-01): check OWNER_USER_ID env var
-    owner_id = os.environ.get("OWNER_USER_ID")
-    if not owner_id or user_id != int(owner_id):
-        tg.send_message(chat_id=chat_id, text="Not authorized.")
-        return
-
+def _build_status_text() -> str:
     now_ts = int(time.time())
 
     # Active users in last 7 days (D-02)
@@ -54,15 +46,49 @@ def handle(message: dict) -> None:
     else:
         error_lines = ["None"]
 
-    # Format single Markdown message (D-04)
-    text = (
+    refreshed_at = time.strftime("%H:%M:%S UTC", time.gmtime(now_ts))
+    return (
         f"\U0001f916 *Bot Status*\n\n"
         f"\U0001f4ca *Active users (7d):* {active_users}\n"
         f"\u26a1 *Deliveries (last hour):* {deliveries_hour}\n"
         f"\U0001f4b0 *Revenue (total Stars):* {revenue:,}\n\n"
-        f"\u26a0\ufe0f *Recent errors:*\n" + "\n".join(error_lines)
+        f"\u26a0\ufe0f *Recent errors:*\n" + "\n".join(error_lines) +
+        f"\n\n_Updated: {refreshed_at}_"
     )
 
-    result = tg.send_message(chat_id=chat_id, text=text)
+
+def handle(message: dict) -> None:
+    """Handle /admin command. Shows bot health metrics. Owner only."""
+    user_id = message["from"]["id"]
+    chat_id = message["chat"]["id"]
+
+    # Authorization (D-01): check OWNER_USER_ID env var
+    owner_id = os.environ.get("OWNER_USER_ID")
+    if not owner_id or user_id != int(owner_id):
+        tg.send_message(chat_id=chat_id, text="Not authorized.")
+        return
+
+    text = _build_status_text()
+    result = tg.send_message(chat_id=chat_id, text=text, reply_markup=_REFRESH_MARKUP)
     if result.get("message_id"):
         db.track_bot_message(user_id, result["message_id"])
+
+
+def handle_refresh(callback_query: dict) -> None:
+    """Handle admin:refresh callback — edit the existing panel in-place."""
+    user_id = callback_query["from"]["id"]
+    owner_id = os.environ.get("OWNER_USER_ID")
+    if not owner_id or user_id != int(owner_id):
+        tg.answer_callback_query(callback_query["id"], text="Not authorized.")
+        return
+
+    msg = callback_query.get("message", {})
+    chat_id = msg["chat"]["id"]
+    message_id = msg["message_id"]
+
+    text = _build_status_text()
+    try:
+        tg.edit_message_text(chat_id, message_id, text, reply_markup=_REFRESH_MARKUP)
+    except Exception as e:
+        logger.warning("admin refresh edit failed: %s", e)
+    tg.answer_callback_query(callback_query["id"])
