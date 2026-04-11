@@ -22,7 +22,7 @@ from delivery.scheduler import get_due_deliveries, group_by_theme, check_expiry_
 from delivery.fetcher import fetch_articles
 from delivery.ai import summarize_articles
 from delivery import cache as theme_cache
-from delivery.poster import post_article
+from delivery.poster import post_article, send_already_received_note
 
 # Max parallel theme workers. Bounded to avoid hammering Telegram/AI APIs simultaneously.
 _MAX_THEME_WORKERS = 5
@@ -131,7 +131,28 @@ def _process_theme(
         # Fan out to each user
         for user in users:
             user_articles = articles[:user["effective_articles_per_theme"]]
-            for article in user_articles:
+
+            # Per-user dedup: skip articles this user already received in last 24h
+            already_received = {
+                row["article_url"]
+                for row in db.execute(
+                    "SELECT article_url FROM delivery_log "
+                    "WHERE user_id = ? AND sent_at > ? AND status = 'sent'",
+                    [user["user_id"], cutoff_ts],
+                )
+            }
+            new_articles = [a for a in user_articles if a["url"] not in already_received]
+
+            if not new_articles:
+                try:
+                    send_already_received_note(
+                        user["user_id"], theme_info["name"], theme_info["hashtag"]
+                    )
+                except Exception as e:
+                    logger.warning("Failed to send already-received note to %d: %s", user["user_id"], e)
+                continue
+
+            for article in new_articles:
                 try:
                     post_article(user_id=user["user_id"], article=article)
                     posted_urls.append(article["url"])

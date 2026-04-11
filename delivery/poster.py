@@ -54,6 +54,14 @@ def format_post(article: dict) -> str:
     )
 
 
+def send_already_received_note(user_id: int, theme_name: str, hashtag: str) -> None:
+    """Notify user they already received today's digest for this theme."""
+    tag = _escape_mdv2(hashtag)
+    name = _escape_mdv2(theme_name)
+    text = f"\u2705 You already received today's digest for *{name}* \({tag}\)\. Check back tomorrow\!"
+    _send_message(chat_id=user_id, text=text)
+
+
 def post_article(user_id: int, article: dict) -> None:
     """Send one article to a user's DM with reaction buttons. Sends a followup reply if important."""
     text = format_post(article)
