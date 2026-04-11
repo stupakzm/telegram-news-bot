@@ -21,10 +21,12 @@ def _build_status_text() -> str:
 
     # Deliveries in last hour (D-05)
     delivery_rows = db.execute(
-        "SELECT COUNT(*) as count FROM delivery_log WHERE sent_at > ? AND status = 'sent'",
+        "SELECT status, COUNT(*) as count FROM delivery_log WHERE sent_at > ? GROUP BY status",
         [now_ts - 3600]
     )
-    deliveries_hour = delivery_rows[0]["count"] if delivery_rows else 0
+    sent_hour = next((r["count"] for r in delivery_rows if r["status"] == "sent"), 0)
+    failed_hour = next((r["count"] for r in delivery_rows if r["status"] == "failed"), 0)
+    deliveries_hour = sent_hour
 
     # Total revenue in Stars (D-06)
     revenue_rows = db.execute("SELECT SUM(stars_paid) as total FROM users")
@@ -50,7 +52,8 @@ def _build_status_text() -> str:
     return (
         f"\U0001f916 *Bot Status*\n\n"
         f"\U0001f4ca *Active users (7d):* {active_users}\n"
-        f"\u26a1 *Deliveries (last hour):* {deliveries_hour}\n"
+        f"\u26a1 *Deliveries (last hour):* {sent_hour} sent"
+        + (f", {failed_hour} failed" if failed_hour else "") + "\n"
         f"\U0001f4b0 *Revenue (total Stars):* {revenue:,}\n\n"
         f"\u26a0\ufe0f *Recent errors:*\n" + "\n".join(error_lines) +
         f"\n\n_Updated: {refreshed_at}_"

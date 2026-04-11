@@ -1,7 +1,10 @@
 import hashlib
+import logging
 import os
 import re
 import requests
+
+logger = logging.getLogger(__name__)
 
 
 def _url_key(url: str) -> str:
@@ -58,7 +61,7 @@ def send_already_received_note(user_id: int, theme_name: str, hashtag: str) -> N
     """Notify user they already received today's digest for this theme."""
     tag = _escape_mdv2(hashtag)
     name = _escape_mdv2(theme_name)
-    text = f"\u2705 You already received today's digest for *{name}* \({tag}\)\. Check back tomorrow\!"
+    text = f"\u2705 You already received today's digest for *{name}* \\({tag}\\)\\. Check back tomorrow\\!"
     _send_message(chat_id=user_id, text=text)
 
 
@@ -76,8 +79,11 @@ def post_article(user_id: int, article: dict) -> None:
 
     if article.get("is_important") and article.get("importance_detail"):
         followup = f"\U0001f9f5 *Why this matters:*\n{_escape_mdv2(article['importance_detail'])}"
-        _send_message(
-            chat_id=user_id,
-            text=followup,
-            reply_to_message_id=result["message_id"],
-        )
+        try:
+            _send_message(
+                chat_id=user_id,
+                text=followup,
+                reply_to_message_id=result["message_id"],
+            )
+        except Exception as e:
+            logger.warning("Failed to send importance followup to user %d: %s", user_id, e)
