@@ -1,8 +1,8 @@
 name: Deliver News Digests
 
 on:
-  schedule:
-    - cron: "0 * * * *"   # every hour on the hour (UTC)
+  # schedule:
+  #   - cron: "0 * * * *"   # disabled — triggered externally via cron-job.org
   workflow_dispatch:        # allow manual trigger
 
 jobs:
