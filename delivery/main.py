@@ -56,8 +56,6 @@ def _process_theme(
     theme_type: str,
     theme_id: int,
     users: list[dict],
-    date_str: str,
-    quarter: int,
     cutoff_ts: int,
     now_ts: int,
 ) -> dict:
@@ -91,47 +89,40 @@ def _process_theme(
         theme_name = theme["name"]
         theme_info = theme
 
-        # Cache check
-        articles = theme_cache.get_cached(theme_type, theme_id, date_str, quarter)
+        # Rolling 24h article pool — score only genuinely new articles, deliver from full pool
+        pool = theme_cache.get_pool(theme_type, theme_id)
+        existing_urls = {a["url"] for a in pool}
 
-        if articles is None:
-            # Cache miss: fetch + summarize
-            raw_articles = fetch_articles(theme)
-            if not raw_articles:
-                status = "no_articles"
-                return _build_result(
-                    theme_type, theme_id, theme_name, user_count,
-                    status, articles_fetched, articles_sent, error_msg,
-                    theme_info, sent_articles, delivery_log_statements, posted_urls,
-                )
-            articles_fetched = len(raw_articles)
-            articles = summarize_articles(raw_articles, theme["hashtag"])
-            if not articles:
-                status = "ai_empty"
-                return _build_result(
-                    theme_type, theme_id, theme_name, user_count,
-                    status, articles_fetched, articles_sent, error_msg,
-                    theme_info, sent_articles, delivery_log_statements, posted_urls,
-                )
-            # Cache the result
-            theme_cache.set_cache(theme_type, theme_id, date_str, quarter, articles)
+        raw_articles = fetch_articles(theme)
+        new_raw = [a for a in raw_articles if a["url"] not in existing_urls]
+        articles_fetched = len(new_raw)
+
+        if new_raw:
+            new_scored = summarize_articles(new_raw, theme["hashtag"])
+            # Merge into pool (update_pool handles prune + sort by relevance)
+            articles = theme_cache.update_pool(theme_type, theme_id, new_scored)
+        elif pool:
+            articles = pool  # nothing new this run, deliver from existing pool
         else:
-            # Cache hit: re-filter against recent posted_articles
-            posted = {
-                row["url"]
-                for row in db.execute(
-                    "SELECT url FROM posted_articles WHERE posted_at > ?", [cutoff_ts]
-                )
-            }
-            articles = [a for a in articles if a["url"] not in posted]
-            articles_fetched = len(articles)
+            status = "no_articles"
+            return _build_result(
+                theme_type, theme_id, theme_name, user_count,
+                status, articles_fetched, articles_sent, error_msg,
+                theme_info, sent_articles, delivery_log_statements, posted_urls,
+            )
+
+        if not articles:
+            status = "ai_empty"
+            return _build_result(
+                theme_type, theme_id, theme_name, user_count,
+                status, articles_fetched, articles_sent, error_msg,
+                theme_info, sent_articles, delivery_log_statements, posted_urls,
+            )
 
         sent_articles = articles
 
         # Fan out to each user
         for user in users:
-            user_articles = articles[:user["effective_articles_per_theme"]]
-
             # Per-user dedup: skip articles this user already received in last 24h
             already_received = {
                 row["article_url"]
@@ -141,7 +132,9 @@ def _process_theme(
                     [user["user_id"], cutoff_ts],
                 )
             }
-            new_articles = [a for a in user_articles if a["url"] not in already_received]
+            # Dedup first, then slice — ensures user gets top-N fresh articles
+            new_articles = [a for a in articles if a["url"] not in already_received]
+            new_articles = new_articles[:user["effective_articles_per_theme"]]
 
             if not new_articles:
                 try:
@@ -238,10 +231,8 @@ def run():
     run_start = time.monotonic()
     hour_utc = now_utc.hour
     weekday = now_utc.isoweekday()  # 1=Mon...7=Sun
-    date_str = now_utc.strftime("%Y-%m-%d")
-    quarter = theme_cache.current_quarter(hour_utc)
 
-    logger.info("run start: date=%s quarter=Q%d hour=%d weekday=%d", date_str, quarter, hour_utc, weekday)
+    logger.info("run start: hour=%d weekday=%d", hour_utc, weekday)
 
     # Step 1: find users due this hour
     deliveries = get_due_deliveries(hour_utc=hour_utc, weekday=weekday)
@@ -266,7 +257,7 @@ def run():
             future = executor.submit(
                 _process_theme,
                 theme_type, theme_id, users,
-                date_str, quarter, cutoff_ts, now_ts,
+                cutoff_ts, now_ts,
             )
             futures_map[future] = (theme_type, theme_id)
 

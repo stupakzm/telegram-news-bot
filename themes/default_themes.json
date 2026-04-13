@@ -4,7 +4,10 @@
     "hashtag": "#tech",
     "rss_feeds": [
       "https://techcrunch.com/feed/",
-      "https://www.theverge.com/rss/index.xml"
+      "https://www.theverge.com/rss/index.xml",
+      "https://feeds.arstechnica.com/arstechnica/index",
+      "https://www.engadget.com/rss.xml",
+      "https://www.wired.com/feed/rss"
     ]
   },
   {
@@ -12,7 +15,12 @@
     "hashtag": "#ai",
     "rss_feeds": [
       "https://venturebeat.com/category/ai/feed/",
-      "https://www.technologyreview.com/feed/"
+      "https://www.technologyreview.com/feed/",
+      "https://openai.com/blog/rss.xml",
+      "https://huggingface.co/blog/feed.xml",
+      "https://blog.google/technology/ai/rss/",
+      "https://www.anthropic.com/rss.xml",
+      "https://www.unite.ai/feed/"
     ]
   },
   {
@@ -20,7 +28,12 @@
     "hashtag": "#privacy",
     "rss_feeds": [
       "https://www.eff.org/rss/updates.xml",
-      "https://www.wired.com/feed/category/security/latest/rss"
+      "https://www.wired.com/feed/category/security/latest/rss",
+      "https://krebsonsecurity.com/feed/",
+      "https://www.schneier.com/feed/atom/",
+      "https://feeds.feedburner.com/TheHackersNews",
+      "https://www.bleepingcomputer.com/feed/",
+      "https://www.darkreading.com/rss.xml"
     ]
   },
   {
@@ -28,7 +41,12 @@
     "hashtag": "#software",
     "rss_feeds": [
       "https://www.infoq.com/feed/",
-      "https://news.ycombinator.com/rss"
+      "https://news.ycombinator.com/rss",
+      "https://stackoverflow.blog/feed/",
+      "https://github.blog/feed/",
+      "https://dev.to/feed",
+      "https://thenewstack.io/feed/",
+      "https://martinfowler.com/feed.atom"
     ]
   },
   {
@@ -36,15 +54,22 @@
     "hashtag": "#techcompanies",
     "rss_feeds": [
       "https://feeds.reuters.com/reuters/technologyNews",
-      "https://feeds.bloomberg.com/technology/news.rss"
+      "https://feeds.bloomberg.com/technology/news.rss",
+      "https://www.cnbc.com/id/19854910/device/rss/rss.html",
+      "https://fortune.com/feed/",
+      "https://www.businessinsider.com/sai/features/rss",
+      "https://www.techmeme.com/feed.xml"
     ]
   },
   {
     "name": "Hardware",
     "hashtag": "#hardware",
     "rss_feeds": [
-      "https://www.anandtech.com/rss/",
-      "https://www.tomshardware.com/feeds/all"
+      "https://www.tomshardware.com/feeds/all",
+      "https://www.extremetech.com/feed",
+      "https://www.pcworld.com/feed",
+      "https://www.guru3d.com/news/rss",
+      "https://www.digitaltrends.com/feed/"
     ]
   }
 ]

@@ -47,12 +47,12 @@ def _send_message(chat_id: int, text: str, reply_to_message_id: int = None, repl
 def format_post(article: dict) -> str:
     title = _escape_mdv2(article["title"])
     summary = _escape_mdv2(article["summary"])
-    hashtags = _escape_mdv2(" ".join(article.get("hashtags", [])))
+    hashtag = _escape_mdv2(article.get("hashtag", ""))
     url = article["url"]  # URLs inside [...](url) — the URL part is not escaped
     return (
         f"\U0001f539 *{title}*\n\n"
         f"{summary}\n\n"
-        f"{hashtags}\n"
+        f"{hashtag}\n"
         f"\U0001f517 {_escape_mdv2(url)}"
     )
 

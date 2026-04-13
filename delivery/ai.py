@@ -22,11 +22,16 @@ Analyze the articles below and return a JSON array. Each element must have exact
 - "summary": 2-3 sentences. Write in direct, factual style — state what happened, the key details, \
 and why it matters. No filler phrases like "In this article", "The author discusses", "This piece covers", \
 "Someone explains", or any meta-references to the article itself. Write about the news, not about the article.
-- "hashtags": JSON array of 1-2 hashtags chosen from: {hashtag}
-- "is_important": true ONLY if major real-world impact (regulation, market crash, critical security breach, \
-major product launch affecting millions); false otherwise
-- "importance_detail": if is_important true, one paragraph of concrete context (what changed, who is affected, \
-what the consequences are); else empty string ""
+- "relevance": integer 1-5 rating how relevant and interesting this article is to the theme audience \
+({hashtag}). 5 = must-read for anyone following this topic; 4 = clearly relevant, notable development; \
+3 = moderately relevant; 2 = weakly relevant; 1 = barely on-topic. Be strict — most articles should be 2-4.
+- "is_important": true if the article has significant real-world impact worth a deeper explanation — \
+this includes: major regulation or policy change, market crash or major financial event, critical security \
+breach or zero-day, significant AI model or product release, major OSS project milestone, notable industry \
+acquisition or shutdown, important research breakthrough. Use true generously for anything a developer \
+or tech reader would want to understand in depth; false for routine updates and minor news.
+- "importance_detail": if is_important true, 2-3 sentences of concrete context (what changed, who is \
+affected, what the consequences are); else empty string ""
 - "skip": true if the article is affiliate marketing, a sponsored post, a product promotion/review written \
 to sell something, or has no real news value; false otherwise
 

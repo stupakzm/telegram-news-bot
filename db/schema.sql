@@ -98,6 +98,14 @@ CREATE TABLE IF NOT EXISTS article_reactions(
 CREATE INDEX IF NOT EXISTS idx_article_reactions_reaction
     ON article_reactions(reaction);
 
+CREATE TABLE IF NOT EXISTS theme_article_pool (
+    theme_type   TEXT    NOT NULL,
+    theme_id     INTEGER NOT NULL,
+    articles     TEXT    NOT NULL,  -- JSON array; each article has fetched_at (Unix ts)
+    updated_at   INTEGER NOT NULL,
+    PRIMARY KEY (theme_type, theme_id)
+);
+
 CREATE TABLE IF NOT EXISTS delivery_errors(
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     theme_id INTEGER NOT NULL,
