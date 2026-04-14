@@ -126,3 +126,12 @@ CREATE TABLE IF NOT EXISTS bot_messages (
 
 CREATE INDEX IF NOT EXISTS idx_bot_messages_user
     ON bot_messages(user_id);
+
+CREATE TABLE IF NOT EXISTS rate_limit_log (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id     INTEGER NOT NULL,
+    occurred_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_rate_limit_log_user_time
+    ON rate_limit_log(user_id, occurred_at DESC);
