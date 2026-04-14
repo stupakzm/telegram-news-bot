@@ -40,7 +40,9 @@ def add_theme(user_id: int, theme_type: str, theme_id: int) -> bool:
             if UPGRADE_ENABLED else
             f"You've reached the {limit}-theme limit for your plan. More options coming soon!"
         )
-        tg.send_message(chat_id=user_id, text=msg)
+        result = tg.send_message(chat_id=user_id, text=msg)
+        if result.get("message_id"):
+            db.track_bot_message(user_id, result["message_id"])
         return False
 
     articles = 2 if tier == "monthly" else 1

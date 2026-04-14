@@ -109,16 +109,20 @@ def handle_ai(message: dict) -> None:
     user_id = message["from"]["id"]
     allowed, _ = _check_access(user_id)
     if not allowed:
-        tg.send_message(chat_id=user_id, text=(
+        result = tg.send_message(chat_id=user_id, text=(
             "🔒 Custom themes require a paid plan. Use /upgrade." if UPGRADE_ENABLED
             else "🔒 Custom themes are coming soon. Stay tuned!"
         ))
+        if result.get("message_id"):
+            db.track_bot_message(user_id, result["message_id"])
         return
     _set_pending(user_id, "addtheme_ai_topic")
-    tg.send_message(
+    result = tg.send_message(
         chat_id=user_id,
         text='🔍 *Add Custom Theme*\n\nDescribe the topic you want to follow:\n_(e.g. "electric vehicles", "NBA", "web security")_',
     )
+    if result.get("message_id"):
+        db.track_bot_message(user_id, result["message_id"])
 
 
 def handle_manual(message: dict) -> None:
@@ -126,16 +130,20 @@ def handle_manual(message: dict) -> None:
     user_id = message["from"]["id"]
     allowed, _ = _check_access(user_id)
     if not allowed:
-        tg.send_message(chat_id=user_id, text=(
+        result = tg.send_message(chat_id=user_id, text=(
             "🔒 Custom themes require a paid plan. Use /upgrade." if UPGRADE_ENABLED
             else "🔒 Custom themes are coming soon. Stay tuned!"
         ))
+        if result.get("message_id"):
+            db.track_bot_message(user_id, result["message_id"])
         return
     _set_pending(user_id, "addtheme_manual_urls")
-    tg.send_message(
+    result = tg.send_message(
         chat_id=user_id,
         text="📋 *Add Custom Theme (Manual)*\n\nPaste RSS feed URLs, one per line:",
     )
+    if result.get("message_id"):
+        db.track_bot_message(user_id, result["message_id"])
 
 
 def handle_pending(message: dict, action: str, data_json: str) -> None:
@@ -152,7 +160,9 @@ def handle_pending(message: dict, action: str, data_json: str) -> None:
         try:
             feeds = _suggest_feeds(text)
         except Exception:
-            tg.send_message(chat_id=user_id, text="❌ Could not fetch feed suggestions. Try again later.")
+            result = tg.send_message(chat_id=user_id, text="❌ Could not fetch feed suggestions. Try again later.")
+            if result.get("message_id"):
+                db.track_bot_message(user_id, result["message_id"])
             _clear_pending(user_id)
             return
         buttons = [
@@ -161,11 +171,13 @@ def handle_pending(message: dict, action: str, data_json: str) -> None:
         ]
         buttons.append([{"text": "✅ Done — name this theme", "callback_data": "addtheme:feeds_done"}])
         _set_pending(user_id, "addtheme_ai_feeds", {"feeds": feeds, "selected": [0]})
-        tg.send_message(
+        result = tg.send_message(
             chat_id=user_id,
             text="Here are suggested feeds. Tap to toggle, then tap Done:",
             reply_markup={"inline_keyboard": buttons},
         )
+        if result.get("message_id"):
+            db.track_bot_message(user_id, result["message_id"])
 
     elif action == "addtheme_ai_name":
         # User sent the theme name → save
@@ -175,30 +187,40 @@ def handle_pending(message: dict, action: str, data_json: str) -> None:
         hashtag = "#" + text.lower().replace(" ", "")[:15]
         _save_custom_theme(user_id, text, hashtag, urls, ai_suggested=True)
         _clear_pending(user_id)
-        tg.send_message(chat_id=user_id, text=f"✅ Theme *{text}* added! Use /themes to manage it.")
+        result = tg.send_message(chat_id=user_id, text=f"✅ Theme *{text}* added! Use /themes to manage it.")
+        if result.get("message_id"):
+            db.track_bot_message(user_id, result["message_id"])
 
     elif action == "addtheme_manual_urls":
         # User sent RSS URLs → validate, ask for name
         urls = [line.strip() for line in text.splitlines() if line.strip().startswith("http")]
         if not urls:
-            tg.send_message(chat_id=user_id, text="❌ No valid URLs found. Send URLs starting with http.")
+            result = tg.send_message(chat_id=user_id, text="❌ No valid URLs found. Send URLs starting with http.")
+            if result.get("message_id"):
+                db.track_bot_message(user_id, result["message_id"])
             return
         # Filter out restricted URLs
         blocked = [u for u in urls if not validate_rss_url(u)]
         if blocked:
-            tg.send_message(chat_id=user_id, text="❌ That URL uses a restricted address and cannot be used as an RSS feed.")
+            result = tg.send_message(chat_id=user_id, text="❌ That URL uses a restricted address and cannot be used as an RSS feed.")
+            if result.get("message_id"):
+                db.track_bot_message(user_id, result["message_id"])
             urls = [u for u in urls if validate_rss_url(u)]
             if not urls:
                 return
         valid = [u for u in urls if _validate_feed(u)]
         if not valid:
-            tg.send_message(chat_id=user_id, text="❌ None returned valid RSS entries. Check URLs and retry.")
+            result = tg.send_message(chat_id=user_id, text="❌ None returned valid RSS entries. Check URLs and retry.")
+            if result.get("message_id"):
+                db.track_bot_message(user_id, result["message_id"])
             return
         _set_pending(user_id, "addtheme_manual_name", {"urls": valid})
-        tg.send_message(
+        result = tg.send_message(
             chat_id=user_id,
             text=f"✅ {len(valid)} feed(s) validated. What should this theme be called?",
         )
+        if result.get("message_id"):
+            db.track_bot_message(user_id, result["message_id"])
 
     elif action == "addtheme_manual_name":
         # User sent the theme name → save
@@ -206,12 +228,16 @@ def handle_pending(message: dict, action: str, data_json: str) -> None:
         hashtag = "#" + text.lower().replace(" ", "")[:15]
         _save_custom_theme(user_id, text, hashtag, urls, ai_suggested=False)
         _clear_pending(user_id)
-        tg.send_message(chat_id=user_id, text=f"✅ Theme *{text}* added! Use /themes to manage it.")
+        result = tg.send_message(chat_id=user_id, text=f"✅ Theme *{text}* added! Use /themes to manage it.")
+        if result.get("message_id"):
+            db.track_bot_message(user_id, result["message_id"])
 
     else:
         logger.warning("handle_pending: unknown action %r for user %d", action, user_id)
         _clear_pending(user_id)
-        tg.send_message(chat_id=user_id, text="⚠️ Something went wrong. Please try your command again.")
+        result = tg.send_message(chat_id=user_id, text="⚠️ Something went wrong. Please try your command again.")
+        if result.get("message_id"):
+            db.track_bot_message(user_id, result["message_id"])
 
 
 def toggle_feed(user_id: int, feed_idx: int) -> None:
@@ -238,11 +264,13 @@ def toggle_feed(user_id: int, feed_idx: int) -> None:
         for i, f in enumerate(feeds)
     ]
     buttons.append([{"text": "✅ Done — name this theme", "callback_data": "addtheme:feeds_done"}])
-    tg.send_message(
+    result = tg.send_message(
         chat_id=user_id,
         text="Toggle feeds, then tap Done:",
         reply_markup={"inline_keyboard": buttons},
     )
+    if result.get("message_id"):
+        db.track_bot_message(user_id, result["message_id"])
 
 
 def feeds_done(user_id: int) -> None:
@@ -256,10 +284,14 @@ def feeds_done(user_id: int) -> None:
     data = json.loads(rows[0]["data"])
     selected = data.get("selected", [])
     if not selected:
-        tg.send_message(chat_id=user_id, text="⚠️ Please select at least one feed before continuing.")
+        result = tg.send_message(chat_id=user_id, text="⚠️ Please select at least one feed before continuing.")
+        if result.get("message_id"):
+            db.track_bot_message(user_id, result["message_id"])
         return
     _set_pending(user_id, "addtheme_ai_name", data)
-    tg.send_message(
+    result = tg.send_message(
         chat_id=user_id,
         text='What should this theme be called? _(e.g. "Electric Vehicles")_',
     )
+    if result.get("message_id"):
+        db.track_bot_message(user_id, result["message_id"])

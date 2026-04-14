@@ -143,7 +143,9 @@ def handle_pending(message: dict, action: str, data_json: str) -> None:
             if not (0 <= hour <= 23):
                 raise ValueError
         except ValueError:
-            tg.send_message(chat_id=user_id, text="⚠️ Please send a number between 0 and 23.")
+            result = tg.send_message(chat_id=user_id, text="⚠️ Please send a number between 0 and 23.")
+            if result.get("message_id"):
+                db.track_bot_message(user_id, result["message_id"])
             return
         days = data.get("selected", [])
         set_global_schedule(user_id, days, hour)

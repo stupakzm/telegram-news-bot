@@ -38,10 +38,12 @@ def handle_successful_payment(message: dict) -> None:
     payload = payment["invoice_payload"]  # e.g. "tier:one_time"
     if ":" not in payload:
         logger.error("handle_successful_payment: malformed payload %r for user %d", payload, user_id)
-        tg.send_message(
+        result = tg.send_message(
             chat_id=user_id,
             text="⚠️ Payment received but could not be processed. Please contact support.",
         )
+        if result.get("message_id"):
+            db.track_bot_message(user_id, result["message_id"])
         return
     tier = payload.split(":", 1)[1]
     amount = payment["total_amount"]
@@ -54,10 +56,12 @@ def handle_successful_payment(message: dict) -> None:
                 ["one_time", amount, user_id],
             )
         ])
-        tg.send_message(
+        result = tg.send_message(
             chat_id=user_id,
             text="🎉 *One-time upgrade activated!* You now have access to 6 themes and custom themes.",
         )
+        if result.get("message_id"):
+            db.track_bot_message(user_id, result["message_id"])
     elif tier == "monthly":
         expires_at = now + MONTHLY_DURATION
         db.execute_many([
@@ -67,15 +71,19 @@ def handle_successful_payment(message: dict) -> None:
                 ["monthly", expires_at, amount, user_id],
             )
         ])
-        tg.send_message(
+        result = tg.send_message(
             chat_id=user_id,
             text="🎉 *Monthly subscription activated!* All features unlocked for 30 days.",
         )
+        if result.get("message_id"):
+            db.track_bot_message(user_id, result["message_id"])
     else:
         logger.error(
             "handle_successful_payment: unknown tier %r in payload %r", tier, payload
         )
-        tg.send_message(
+        result = tg.send_message(
             chat_id=user_id,
             text="⚠️ Payment received but could not be processed. Please contact support.",
         )
+        if result.get("message_id"):
+            db.track_bot_message(user_id, result["message_id"])

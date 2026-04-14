@@ -41,7 +41,9 @@ def handle(message: dict) -> None:
     )
 
     if not history:
-        tg.send_message(chat_id=user_id, text="📭 No digest history yet. Check back after your first delivery.")
+        result = tg.send_message(chat_id=user_id, text="📭 No digest history yet. Check back after your first delivery.")
+        if result.get("message_id"):
+            db.track_bot_message(user_id, result["message_id"])
         return
 
     lines = []
