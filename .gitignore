@@ -5,6 +5,9 @@
 .claude/
 .mcp.json
 
+# Local logs
+errors.log
+
 # Python
 __pycache__/
 *.pyc
@@ -14,3 +17,4 @@ dist/
 .venv/
 venv/
 .vercel
+.env*.local
