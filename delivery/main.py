@@ -105,6 +105,14 @@ def _process_theme(
             articles = pool  # nothing new this run, deliver from existing pool
         else:
             status = "no_articles"
+            logger.warning("no_articles: theme=%s/%d name=%s", theme_type, theme_id, theme_name)
+            try:
+                db.execute_many([(
+                    "INSERT INTO delivery_errors (theme_id, theme_type, error_msg, occurred_at) VALUES (?, ?, ?, ?)",
+                    [theme_id, theme_type, f"no_articles: RSS feeds returned nothing for '{theme_name}'", now_ts],
+                )])
+            except Exception:
+                pass
             return _build_result(
                 theme_type, theme_id, theme_name, user_count,
                 status, articles_fetched, articles_sent, error_msg,
@@ -113,6 +121,14 @@ def _process_theme(
 
         if not articles:
             status = "ai_empty"
+            logger.warning("ai_empty: theme=%s/%d name=%s", theme_type, theme_id, theme_name)
+            try:
+                db.execute_many([(
+                    "INSERT INTO delivery_errors (theme_id, theme_type, error_msg, occurred_at) VALUES (?, ?, ?, ?)",
+                    [theme_id, theme_type, f"ai_empty: AI returned no summaries for '{theme_name}'", now_ts],
+                )])
+            except Exception:
+                pass
             return _build_result(
                 theme_type, theme_id, theme_name, user_count,
                 status, articles_fetched, articles_sent, error_msg,
