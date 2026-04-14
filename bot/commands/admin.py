@@ -63,7 +63,7 @@ def _build_status_text() -> str:
     else:
         error_lines = ["None"]
 
-    refreshed_at = time.strftime("%H:%M:%S UTC", time.gmtime(now_ts))
+    refreshed_at = time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime(now_ts))
     return (
         f"\U0001f916 *Bot Status*\n\n"
         f"\U0001f465 *Total users:* {total_users}\n"
