@@ -138,6 +138,7 @@ def _process_theme(
         sent_articles = articles
 
         # Fan out to each user
+        pool_urls = {a["url"] for a in articles}
         for user in users:
             # Per-user dedup: skip articles this user already received in last 24h
             already_received = {
@@ -148,6 +149,20 @@ def _process_theme(
                     [user["user_id"], cutoff_ts],
                 )
             }
+
+            # Daily per-theme cap: if the user already received their quota for this
+            # theme today (URLs overlap with the current pool), don't deliver more
+            # even if new articles were added to the pool since their last delivery.
+            received_today_from_theme = already_received & pool_urls
+            if len(received_today_from_theme) >= user["effective_articles_per_theme"]:
+                try:
+                    send_already_received_note(
+                        user["user_id"], theme_info["name"], theme_info["hashtag"]
+                    )
+                except Exception as e:
+                    logger.warning("Failed to send already-received note to %d: %s", user["user_id"], e)
+                continue
+
             # Dedup first, then slice — ensures user gets top-N fresh articles
             new_articles = [a for a in articles if a["url"] not in already_received]
             new_articles = new_articles[:user["effective_articles_per_theme"]]
