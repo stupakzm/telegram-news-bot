@@ -109,7 +109,9 @@ def days_done(user_id: int, chat_id: int, message_id: int) -> None:
     data = json.loads(rows[0]["data"])
     selected = data.get("selected", [])
     if not selected:
-        tg.send_message(chat_id=user_id, text="⚠️ Please select at least one day.")
+        result = tg.send_message(chat_id=user_id, text="⚠️ Please select at least one day.")
+        if result.get("message_id"):
+            db.track_bot_message(user_id, result["message_id"])
         return
     # Transition to asking for hour
     import time as _time
