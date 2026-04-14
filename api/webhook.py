@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 
 from bot.router import handle_update
 
+logger.info("Webhook handler loaded — version 2026-04-14-v2")
 if not os.environ.get("WEBHOOK_SECRET"):
     logger.warning("WEBHOOK_SECRET not set — webhook endpoint is unauthenticated")
 
