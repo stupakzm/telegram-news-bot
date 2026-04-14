@@ -29,12 +29,20 @@ def set_theme_schedule(user_id: int, user_theme_id: int, days: list[int], hour_u
 
 
 def handle(message: dict) -> None:
+    import time as _time
     user_id = message["from"]["id"]
     rows = db.execute("SELECT tier FROM users WHERE user_id = ?", [user_id])
     tier = rows[0]["tier"] if rows else "free"
 
+    # Pre-load previously saved days so the user doesn't have to re-select them
+    saved = db.execute(
+        "SELECT days FROM user_schedules WHERE user_id = ? AND user_theme_id IS NULL",
+        [user_id],
+    )
+    selected: list = json.loads(saved[0]["days"]) if saved else []
+
     day_buttons = [
-        [{"text": day, "callback_data": f"schedule:day:{i + 1}"}]
+        [{"text": f"{'✅ ' if i + 1 in selected else ''}{day}", "callback_data": f"schedule:day:{i + 1}"}]
         for i, day in enumerate(DAYS)
     ]
     day_buttons.append([{"text": "✅ Done selecting days", "callback_data": "schedule:days_done"}])
@@ -48,14 +56,13 @@ def handle(message: dict) -> None:
         text += "\n\n💡 _You can also set per-theme schedules after this._"
 
     result = tg.send_message(chat_id=user_id, text=text, reply_markup={"inline_keyboard": day_buttons})
-    import time as _time
     if result.get("message_id"):
         db.track_bot_message(user_id, result["message_id"])
     db.execute_many([
         (
             "INSERT OR REPLACE INTO user_pending_actions (user_id, action, data, created_at) "
             "VALUES (?, 'schedule_days', ?, ?)",
-            [user_id, json.dumps({"selected": []}), int(_time.time())],
+            [user_id, json.dumps({"selected": selected}), int(_time.time())],
         )
     ])
 
