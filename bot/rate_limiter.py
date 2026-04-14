@@ -15,7 +15,7 @@ def check_rate_limit(user_id: int) -> tuple[bool, int]:
     retry_after_seconds is 0 when allowed, otherwise seconds until oldest command expires.
     """
     now = time.time()
-    cutoff = now - WINDOW_SECONDS
+    cutoff = int(now - WINDOW_SECONDS)
 
     # Count recent commands in the window
     rows = db.execute(

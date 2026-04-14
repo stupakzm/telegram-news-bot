@@ -64,7 +64,8 @@ def execute(sql: str, args: list = None) -> list[dict]:
         _headers(),
         {"requests": [{"type": "execute", "stmt": stmt}]},
     )
-    resp.raise_for_status()
+    if not resp.ok:
+        raise RuntimeError(f"Turso HTTP {resp.status_code}: {resp.text[:300]}")
     result_obj = resp.json()["results"][0]
     if result_obj.get("type") == "error":
         raise RuntimeError(f"Turso error: {result_obj['error']['message']}")
@@ -84,7 +85,8 @@ def execute_many(statements: list[tuple]) -> None:
         _headers(),
         {"requests": requests_body},
     )
-    resp.raise_for_status()
+    if not resp.ok:
+        raise RuntimeError(f"Turso HTTP {resp.status_code}: {resp.text[:300]}")
     results = resp.json()["results"]
     errors = [
         r["error"]["message"]
