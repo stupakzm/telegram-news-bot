@@ -65,6 +65,9 @@ def _handle_callback(callback_query: dict) -> None:
     elif data == "admin:refresh":
         admin.handle_refresh(callback_query)
         return
+    elif data == "admin:clear_errors":
+        admin.handle_clear_errors(callback_query)
+        return
     elif data.startswith("reaction:"):
         parts = data.split(":", 2)
         if len(parts) == 3:
