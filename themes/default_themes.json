@@ -20,7 +20,10 @@
       "https://huggingface.co/blog/feed.xml",
       "https://blog.google/technology/ai/rss/",
       "https://www.anthropic.com/rss.xml",
-      "https://www.unite.ai/feed/"
+      "https://www.unite.ai/feed/",
+      "https://towardsdatascience.com/feed",
+      "https://machinelearningmastery.com/blog/feed/",
+      "https://ai.meta.com/blog/feed/"
     ]
   },
   {
@@ -31,9 +34,11 @@
       "https://www.wired.com/feed/category/security/latest/rss",
       "https://krebsonsecurity.com/feed/",
       "https://www.schneier.com/feed/atom/",
-      "https://feeds.feedburner.com/TheHackersNews",
+      "https://thehackernews.com/feeds/posts/default",
       "https://www.bleepingcomputer.com/feed/",
-      "https://www.darkreading.com/rss.xml"
+      "https://www.darkreading.com/rss/all.xml",
+      "https://threatpost.com/feed/",
+      "https://www.csoonline.com/feed/"
     ]
   },
   {

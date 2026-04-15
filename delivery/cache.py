@@ -2,7 +2,7 @@ import json
 import time
 import db.client as db
 
-POOL_TTL = 24 * 3600  # articles older than this are pruned from the pool
+POOL_TTL = 36 * 3600  # articles older than this are pruned from the pool (36h avoids midnight boundary issues)
 
 
 def get_pool(theme_type: str, theme_id: int) -> list[dict]:

@@ -279,7 +279,10 @@ def run():
     logger.info("%d unique theme(s) to process for %d delivery row(s)", len(groups), len(deliveries))
 
     now_ts = int(time.time())
-    cutoff_ts = now_ts - 24 * 3600
+    # Reset at UTC midnight, not a rolling 24h window.
+    # This ensures a new day always yields fresh articles regardless of delivery time.
+    today_midnight = datetime(now_utc.year, now_utc.month, now_utc.day, tzinfo=timezone.utc)
+    cutoff_ts = int(today_midnight.timestamp())
 
     # Step 3: process all themes in parallel
     futures_map = {}
