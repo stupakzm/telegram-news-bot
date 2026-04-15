@@ -56,7 +56,6 @@ def _process_theme(
     theme_type: str,
     theme_id: int,
     users: list[dict],
-    cutoff_ts: int,
     now_ts: int,
 ) -> dict:
     """
@@ -140,13 +139,13 @@ def _process_theme(
         # Fan out to each user
         pool_urls = {a["url"] for a in articles}
         for user in users:
-            # Per-user dedup: skip articles this user already received in last 24h
+            # Per-user dedup: skip articles this user has ever received
             already_received = {
                 row["article_url"]
                 for row in db.execute(
                     "SELECT article_url FROM delivery_log "
-                    "WHERE user_id = ? AND sent_at > ? AND status = 'sent'",
-                    [user["user_id"], cutoff_ts],
+                    "WHERE user_id = ? AND status = 'sent'",
+                    [user["user_id"]],
                 )
             }
 
@@ -279,10 +278,6 @@ def run():
     logger.info("%d unique theme(s) to process for %d delivery row(s)", len(groups), len(deliveries))
 
     now_ts = int(time.time())
-    # Reset at UTC midnight, not a rolling 24h window.
-    # This ensures a new day always yields fresh articles regardless of delivery time.
-    today_midnight = datetime(now_utc.year, now_utc.month, now_utc.day, tzinfo=timezone.utc)
-    cutoff_ts = int(today_midnight.timestamp())
 
     # Step 3: process all themes in parallel
     futures_map = {}
@@ -291,7 +286,7 @@ def run():
             future = executor.submit(
                 _process_theme,
                 theme_type, theme_id, users,
-                cutoff_ts, now_ts,
+                now_ts,
             )
             futures_map[future] = (theme_type, theme_id)
 
