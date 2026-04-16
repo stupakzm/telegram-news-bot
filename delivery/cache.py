@@ -4,7 +4,7 @@ import time
 import db.client as db
 
 POOL_TTL = 36 * 3600  # articles older than this are pruned from the pool (36h avoids midnight boundary issues)
-_TITLE_SIMILARITY_THRESHOLD = 0.6  # Jaccard word-overlap threshold for near-duplicate titles
+_TITLE_SIMILARITY_THRESHOLD = 0.7  # Jaccard word-overlap threshold for near-duplicate titles
 
 
 def _title_words(title: str) -> set[str]:

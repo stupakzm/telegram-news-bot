@@ -57,6 +57,7 @@ def _process_theme(
     theme_id: int,
     users: list[dict],
     now_ts: int,
+    today_midnight_ts: int,
 ) -> dict:
     """
     Process a single theme: fetch, summarize, post.
@@ -139,20 +140,20 @@ def _process_theme(
         # Fan out to each user
         pool_urls = {a["url"] for a in articles}
         for user in users:
-            # Per-user dedup: skip articles this user has ever received
-            already_received = {
-                row["article_url"]
-                for row in db.execute(
-                    "SELECT article_url FROM delivery_log "
-                    "WHERE user_id = ? AND status = 'sent'",
-                    [user["user_id"]],
-                )
-            }
+            # Per-user dedup: fetch all-time sent articles with their timestamps in one query
+            delivery_rows = db.execute(
+                "SELECT article_url, sent_at FROM delivery_log "
+                "WHERE user_id = ? AND status = 'sent'",
+                [user["user_id"]],
+            )
+            already_received = {row["article_url"] for row in delivery_rows}
 
-            # Daily per-theme cap: if the user already received their quota for this
-            # theme today (URLs overlap with the current pool), don't deliver more
-            # even if new articles were added to the pool since their last delivery.
-            received_today_from_theme = already_received & pool_urls
+            # Daily per-theme cap: count only articles received since today's UTC midnight
+            # that overlap with the current pool. This resets correctly at 00:00 UTC.
+            received_today_from_theme = {
+                row["article_url"] for row in delivery_rows
+                if row["sent_at"] >= today_midnight_ts and row["article_url"] in pool_urls
+            }
             if len(received_today_from_theme) >= user["effective_articles_per_theme"]:
                 try:
                     send_already_received_note(
@@ -261,6 +262,8 @@ def run():
     run_start = time.monotonic()
     hour_utc = now_utc.hour
     weekday = now_utc.isoweekday()  # 1=Mon...7=Sun
+    today_utc = now_utc.date()
+    today_midnight_ts = int(datetime(today_utc.year, today_utc.month, today_utc.day, tzinfo=timezone.utc).timestamp())
 
     logger.info("run start: hour=%d weekday=%d", hour_utc, weekday)
 
@@ -286,7 +289,7 @@ def run():
             future = executor.submit(
                 _process_theme,
                 theme_type, theme_id, users,
-                now_ts,
+                now_ts, today_midnight_ts,
             )
             futures_map[future] = (theme_type, theme_id)
 
