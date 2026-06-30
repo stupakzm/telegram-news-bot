@@ -32,7 +32,7 @@ This guide covers everything from zero to a running bot: creating every account 
 
 1. In BotFather, send `/mybots` → select your bot → **Bot Settings → Payments**
 2. Select **Telegram Stars**
-3. This is required for the `/upgrade` command to work
+3. This is required for the `/plan` command to charge users
 
 **Find your Telegram user ID (for /admin access):**
 
@@ -106,10 +106,10 @@ Groq/Llama is the final fallback if both Gemini models fail.
 
 Telegram Stars are the in-app currency for payments.
 
-- `STARS_ONETIME_PRICE` — cost of a one-time upgrade (default: `200`)
-- `STARS_MONTHLY_PRICE` — cost of a monthly subscription (default: `100`)
+- `STARS_VIP_PRICE` — monthly VIP plan (default: `100`) — 7 RSS feeds, 2 deliveries/day
+- `STARS_SVIP_PRICE` — monthly SVIP plan (default: `290`) — 15 RSS feeds, 4 deliveries/day
 
-You can set these to any integer. 1 Star ≈ $0.013 USD.
+You can set these to any integer. 1 Star ≈ $0.013 USD net to you. New users get an automatic 3-day VIP trial on `/start`.
 
 ---
 
@@ -162,8 +162,8 @@ GEMINI_API_KEY=AIzaSy...
 GROQ_API_KEY=gsk_...
 WEBHOOK_SECRET=your_generated_secret_here
 OWNER_USER_ID=123456789
-STARS_ONETIME_PRICE=200
-STARS_MONTHLY_PRICE=100
+STARS_VIP_PRICE=100
+STARS_SVIP_PRICE=290
 ```
 
 > `.env` is in `.gitignore` — it will never be committed.
@@ -172,20 +172,22 @@ STARS_MONTHLY_PRICE=100
 
 ### 2.3 Initialize the Database
 
-Apply the schema and seed the default news themes:
+Apply the schema and seed the starter URL packs:
 
 ```bash
 python db/init_db.py
-python db/seed_themes.py
+python db/seed_url_packs.py
 ```
 
 Expected output:
 ```
-Schema applied.
-Seeded 10 themes.
+Schema applied: dropped 17 tables, created 10.
+Seeded 6 url packs.
 ```
 
-This is safe to run multiple times — all statements use `CREATE TABLE IF NOT EXISTS` and `INSERT OR IGNORE`.
+⚠️ **`init_db.py` is destructive** — it drops every table (old and new) before recreating them, so it wipes all user data. Use it once during install or when migrating from a previous schema. After the initial install, leave the database alone — there are no incremental migrations.
+
+`seed_url_packs.py` is safe to re-run; it uses `INSERT OR REPLACE` so re-running just refreshes the curated URL bundles users see on `/start`.
 
 ### 2.4 Run Tests Locally
 
@@ -193,7 +195,7 @@ This is safe to run multiple times — all statements use `CREATE TABLE IF NOT E
 pytest tests/ -v
 ```
 
-Expected: **91 tests passing**.
+Phase 1–4 of the keyword rework ships a fresh test suite covering scoring, fetcher, scheduler, every bot command, and the router. All tests should pass.
 
 ---
 
@@ -230,8 +232,8 @@ Go to **Vercel Dashboard → your project → Settings → Environment Variables
 | `GROQ_API_KEY` | Your Groq API key |
 | `WEBHOOK_SECRET` | Your generated webhook secret |
 | `OWNER_USER_ID` | Your Telegram numeric user ID |
-| `STARS_ONETIME_PRICE` | `200` |
-| `STARS_MONTHLY_PRICE` | `100` |
+| `STARS_VIP_PRICE` | `100` |
+| `STARS_SVIP_PRICE` | `290` |
 
 After adding variables, redeploy so they take effect:
 
@@ -308,14 +310,17 @@ If no users have a schedule set yet, the run will complete with no deliveries se
 
 Run through this after deployment:
 
-- [ ] Open your bot in Telegram and send `/start`
-- [ ] Browse themes with `/themes` and subscribe to one
-- [ ] Set a delivery schedule with `/schedule`
+- [ ] Open your bot in Telegram and send `/start` — confirm 3-day trial activated + URL pack buttons shown
+- [ ] Import a URL pack (e.g. Technology) — confirm next-steps message points at `/keywords` and `/timezone`
+- [ ] Send `/keywords` and add a few words (e.g. `AI, GPU`) — confirm they appear with ❌ remove buttons
+- [ ] Send `/addurl` — confirm your imported feeds appear with quota counter (e.g. `3/7`)
+- [ ] Send `/timezone` — pick a quick-pick or enter an IANA name; confirm schedule shown in local time
+- [ ] Send `/settings` — confirm tier, timezone, feed/keyword counts are correct
 - [ ] Trigger a manual delivery run in GitHub Actions
-- [ ] Confirm the article arrives in Telegram with reaction buttons (thumbs up/down)
+- [ ] Confirm the article arrives in Telegram with the `🎯 keyword-N, ...` relevance line + 👍/👎 buttons
 - [ ] Tap a reaction button — expect a "👍 Noted!" toast
-- [ ] Send `/admin` — confirm the health dashboard appears (owner only)
-- [ ] Send `/upgrade` — confirm the Stars payment flow launches
+- [ ] Send `/admin` (owner only) — confirm the health dashboard appears
+- [ ] Send `/plan` — confirm Activate VIP / Activate SVIP buttons launch a Stars invoice
 - [ ] Verify webhook is live: send any message to the bot and it responds
 
 ---
@@ -329,18 +334,18 @@ Every hourly delivery is logged in GitHub Actions:
 **GitHub → Actions → Deliver News Digests**
 
 Each run shows:
-- How many themes were processed
-- Any RSS feed errors
-- Any AI API errors or fallbacks
+- How many users were due this hour and how many articles were sent
+- Per-feed fetch errors (logged to `delivery_errors`, surfaced on `/admin`)
+- Any AI provider fallbacks (Gemini 2.5 → Gemini 2.0 → Groq)
 
 ### Bot Health Dashboard
 
 Send `/admin` to the bot (owner only) to see:
 
-- **Active users (7d)** — users who received at least one digest in the last 7 days
-- **Deliveries/hour** — digests sent in the last hour
-- **Revenue** — total Telegram Stars collected
-- **Recent errors** — last 5 delivery errors with timestamps
+- **Active users (7d)** — users who received at least one article in the last 7 days
+- **Deliveries (last hour)** — articles sent in the last hour (with failed count if any)
+- **Revenue** — total Telegram Stars collected via VIP/SVIP purchases
+- **Recent errors** — last 5 delivery errors (per-feed-url or per-user) with timestamps
 
 ### Checking Logs
 
@@ -365,14 +370,13 @@ If you need to rotate a key (e.g. Gemini key is compromised):
 
 ### Updating the Database Schema
 
-If a future update adds new tables:
+`db/init_db.py` is **destructive** — it drops every table before recreating. Never run it against a production DB that has paying users unless you've planned a wipe.
+
+If you need to add a new table later, do it manually:
 
 ```bash
-# Pull latest code
-git pull
-
-# Apply schema changes (always safe — uses CREATE TABLE IF NOT EXISTS)
-python db/init_db.py
+turso db shell <name>
+# then paste ALTER TABLE / CREATE TABLE statements
 ```
 
 ### Running Tests After Code Changes
@@ -381,7 +385,7 @@ python db/init_db.py
 pytest tests/ -v
 ```
 
-All 91 tests should pass before deploying any changes.
+All tests should pass before deploying any changes.
 
 ### Deploying Code Updates
 
@@ -444,20 +448,20 @@ If all three fail, check:
 | `GROQ_API_KEY` | console.groq.com | AI fallback |
 | `WEBHOOK_SECRET` | `python -c "import secrets; print(secrets.token_hex(32))"` | Webhook security |
 | `OWNER_USER_ID` | @userinfobot in Telegram | `/admin` command |
-| `STARS_ONETIME_PRICE` | Your choice (integer, default 200) | Payments |
-| `STARS_MONTHLY_PRICE` | Your choice (integer, default 100) | Payments |
+| `STARS_VIP_PRICE` | Your choice (integer, default 100) | `/plan` invoices |
+| `STARS_SVIP_PRICE` | Your choice (integer, default 290) | `/plan` invoices |
 
 ---
 
 ## Quick Reference — One-Time Setup Commands
 
 ```bash
-# Database
-python db/init_db.py        # create all tables
-python db/seed_themes.py    # add default news themes
+# Database (destructive — wipes all data)
+python db/init_db.py            # drop + recreate all tables
+python db/seed_url_packs.py     # seed 6 starter URL packs
 
 # Deploy
-vercel --prod               # deploy to Vercel
+vercel --prod                   # deploy to Vercel
 
 # Register webhook (replace values)
 curl -X POST "https://api.telegram.org/bot<TOKEN>/setWebhook" \
@@ -465,5 +469,5 @@ curl -X POST "https://api.telegram.org/bot<TOKEN>/setWebhook" \
   -d '{"url": "https://<your-app>.vercel.app/webhook", "secret_token": "<WEBHOOK_SECRET>"}'
 
 # Tests
-pytest tests/ -v            # should show 91 passed
+pytest tests/ -v
 ```

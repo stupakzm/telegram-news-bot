@@ -1,97 +1,102 @@
 # bot/router.py
+import hashlib
+import importlib
 import logging
 import time
-from bot.commands import start, themes, schedule, upgrade, history, addtheme, settings, admin, clear
-from bot.commands import payments as payments_cmd
-from bot.rate_limiter import check_rate_limit
+
 import db.client as db
 import bot.telegram as tg
+from bot.commands import start, keywords, addurl, settings, admin, clear
+from bot.commands import timezone as timezone_cmd
+from bot.commands import payments as payments_cmd
+from bot.rate_limiter import check_rate_limit
 
 logger = logging.getLogger(__name__)
 
 COMMAND_MAP = {
     "/start": ("bot.commands.start", "handle"),
-    "/themes": ("bot.commands.themes", "handle"),
-    "/schedule": ("bot.commands.schedule", "handle"),
-    # "/upgrade": ("bot.commands.upgrade", "handle"),  # disabled until Stars payments available
-    "/history": ("bot.commands.history", "handle"),
-    "/addtheme": ("bot.commands.addtheme", "handle_ai"),
-    "/addthememanual": ("bot.commands.addtheme", "handle_manual"),
+    "/keywords": ("bot.commands.keywords", "handle"),
+    "/addurl": ("bot.commands.addurl", "handle"),
     "/settings": ("bot.commands.settings", "handle"),
-    "/admin": ("bot.commands.admin", "handle"),
+    "/timezone": ("bot.commands.timezone", "handle"),
+    "/plan": ("bot.commands.plan", "handle"),
     "/clear": ("bot.commands.clear", "handle"),
+    "/admin": ("bot.commands.admin", "handle"),
 }
+
+
+def _handle_reaction(callback_query: dict, reaction: str, url_key: str) -> None:
+    user_id = callback_query["from"]["id"]
+    rows = db.execute(
+        "SELECT article_url FROM delivery_log WHERE user_id = ? ORDER BY sent_at DESC LIMIT 200",
+        [user_id],
+    )
+    article_url = next(
+        (r["article_url"] for r in rows
+         if hashlib.md5(r["article_url"].encode()).hexdigest()[:16] == url_key),
+        None,
+    )
+    if article_url:
+        db.execute_many([(
+            "INSERT OR REPLACE INTO article_reactions "
+            "(user_id, article_url, reaction, reacted_at) VALUES (?, ?, ?, ?)",
+            [user_id, article_url, reaction, int(time.time())],
+        )])
+    emoji = "\U0001f44d" if reaction == "up" else "\U0001f44e"
+    tg.answer_callback_query(callback_query["id"], text=f"{emoji} Noted!")
 
 
 def _handle_callback(callback_query: dict) -> None:
     data = callback_query.get("data", "")
-    user_id = callback_query["from"]["id"]
 
-    if data.startswith("themes:add:"):
-        _, _, theme_type, theme_id = data.split(":")
-        themes.add_theme(user_id, theme_type, int(theme_id))
-        msg = callback_query.get("message", {})
-        themes.refresh_keyboard(user_id, msg["chat"]["id"], msg["message_id"])
-    elif data.startswith("themes:remove:"):
-        _, _, theme_type, theme_id = data.split(":")
-        themes.remove_theme(user_id, theme_type, int(theme_id))
-        msg = callback_query.get("message", {})
-        themes.refresh_keyboard(user_id, msg["chat"]["id"], msg["message_id"])
-    elif data.startswith("pay:"):
-        tier = data.split(":", 1)[1]
-        payments_cmd.send_invoice(user_id, tier)
-    # elif data.startswith("upgrade:show"):  # disabled until Stars payments available
-    #     upgrade.handle({"from": callback_query["from"], "chat": {"id": user_id}})
-    elif data.startswith("addtheme:ai"):
-        addtheme.handle_ai({"from": callback_query["from"], "chat": {"id": user_id}})
-    elif data.startswith("addtheme:manual"):
-        addtheme.handle_manual({"from": callback_query["from"], "chat": {"id": user_id}})
-    elif data.startswith("addtheme:feed:"):
+    if data.startswith("start:pack:"):
+        pack_id = int(data.split(":")[2])
+        start.handle_pack_callback(callback_query, pack_id)
+        return
+    if data == "start:skip":
+        start.handle_skip_callback(callback_query)
+        return
+
+    if data == "kw:add":
+        keywords.handle_add_callback(callback_query)
+        return
+    if data.startswith("kw:rm:"):
         idx = int(data.split(":")[2])
-        addtheme.toggle_feed(user_id, idx)
-    elif data == "addtheme:feeds_done":
-        addtheme.feeds_done(user_id)
-    elif data.startswith("schedule:day:"):
-        day_idx = int(data.split(":")[2])
-        msg = callback_query.get("message", {})
-        schedule.toggle_day(user_id, day_idx, msg["chat"]["id"], msg["message_id"])
-    elif data == "schedule:days_done":
-        msg = callback_query.get("message", {})
-        schedule.days_done(user_id, msg["chat"]["id"], msg["message_id"])
-    elif data == "schedule:setup":
-        schedule.handle({"from": callback_query["from"], "chat": {"id": user_id}})
-    elif data == "themes:browse":
-        themes.handle({"from": callback_query["from"], "chat": {"id": user_id}})
-    elif data == "admin:refresh":
+        keywords.handle_remove_callback(callback_query, idx)
+        return
+
+    if data == "url:add":
+        addurl.handle_add_callback(callback_query)
+        return
+    if data.startswith("url:rm:"):
+        feed_id = int(data.split(":")[2])
+        addurl.handle_remove_callback(callback_query, feed_id)
+        return
+
+    if data.startswith("tz:set:"):
+        tz_name = data.split(":", 2)[2]
+        timezone_cmd.handle_set_callback(callback_query, tz_name)
+        return
+    if data == "tz:custom":
+        timezone_cmd.handle_custom_callback(callback_query)
+        return
+
+    if data.startswith("pay:"):
+        tier = data.split(":", 1)[1]
+        payments_cmd.send_invoice(user_id=callback_query["from"]["id"], tier=tier)
+        tg.answer_callback_query(callback_query["id"])
+        return
+
+    if data == "admin:refresh":
         admin.handle_refresh(callback_query)
         return
-    elif data.startswith("reaction:"):
+
+    if data.startswith("reaction:"):
         parts = data.split(":", 2)
         if len(parts) == 3:
-            reaction = parts[1]  # 'up' or 'down'
-            url_key = parts[2]
-            # Resolve short hash back to full URL via delivery_log
-            import hashlib
-            rows = db.execute(
-                "SELECT article_url FROM delivery_log WHERE user_id = ? ORDER BY sent_at DESC LIMIT 200",
-                [user_id],
-            )
-            article_url = next(
-                (r["article_url"] for r in rows
-                 if hashlib.md5(r["article_url"].encode()).hexdigest()[:16] == url_key),
-                None,
-            )
-            if article_url:
-                now_ts = int(time.time())
-                db.execute_many([(
-                    "INSERT OR REPLACE INTO article_reactions "
-                    "(user_id, article_url, reaction, reacted_at) "
-                    "VALUES (?, ?, ?, ?)",
-                    [user_id, article_url, reaction, now_ts]
-                )])
-            emoji = "\U0001f44d" if reaction == "up" else "\U0001f44e"
-            tg.answer_callback_query(callback_query["id"], text=f"{emoji} Noted!")
+            _handle_reaction(callback_query, parts[1], parts[2])
             return
+
     tg.answer_callback_query(callback_query["id"])
 
 
@@ -104,19 +109,20 @@ def _handle_pending_action(message: dict) -> bool:
         return False
     action = rows[0]["action"]
     data_json = rows[0]["data"]
-    if action.startswith("addtheme_"):
-        addtheme.handle_pending(message, action, data_json)
-    elif action.startswith("schedule_"):
-        schedule.handle_pending(message, action, data_json)
+
+    if action.startswith("keywords_"):
+        keywords.handle_pending(message, action, data_json)
+    elif action.startswith("addurl_"):
+        addurl.handle_pending(message, action, data_json)
+    elif action.startswith("timezone_"):
+        timezone_cmd.handle_pending(message, action, data_json)
     else:
-        # Unknown pending action — clear it
         logger.warning("_handle_pending_action: unknown action %r for user %d", action, user_id)
         db.execute_many([("DELETE FROM user_pending_actions WHERE user_id = ?", [user_id])])
     return True
 
 
 def handle_update(update: dict) -> None:
-    """Route a Telegram update to the appropriate handler."""
     if "callback_query" in update:
         _handle_callback(update["callback_query"])
         return
@@ -136,22 +142,20 @@ def handle_update(update: dict) -> None:
     if not text.startswith("/"):
         if _handle_pending_action(message):
             return
+        return
 
-    if text.startswith("/"):
-        # Rate limit commands only (D-13, D-15)
-        user_id = message["from"]["id"]
-        chat_id = message["chat"]["id"]
-        allowed, retry_after = check_rate_limit(user_id)
-        if not allowed:
-            tg.send_message(
-                chat_id=chat_id,
-                text=f"Slow down! You've sent too many commands. Try again in {retry_after} seconds.",
-            )
-            return
+    user_id = message["from"]["id"]
+    chat_id = message["chat"]["id"]
+    allowed, retry_after = check_rate_limit(user_id)
+    if not allowed:
+        tg.send_message(
+            chat_id=chat_id,
+            text=f"Slow down! You've sent too many commands. Try again in {retry_after} seconds.",
+        )
+        return
 
     command = text.split()[0].split("@")[0]
     entry = COMMAND_MAP.get(command)
     if entry:
-        import importlib
         mod = importlib.import_module(entry[0])
         getattr(mod, entry[1])(message)

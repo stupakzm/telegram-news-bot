@@ -1,16 +1,22 @@
-# delivery/main.py
 """
-Main delivery orchestrator. Called by GitHub Actions every hour.
-Usage: python -m delivery.main
+Delivery orchestrator — invoked hourly by GitHub Actions.
+
+Per-user pipeline:
+  fetch each feed → score in code → upsert into per-user pool →
+  pick top-2 per URL (score > 0) → batch AI summary → post via Telegram.
+
+No shared cache: each user's URL+keyword combination is unique, so cache hits
+would be near zero. Will revisit if/when feed URLs deduplicate across many
+users.
 """
 import json
 import logging
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 
 from dotenv import load_dotenv
-load_dotenv()  # load env BEFORE project imports that may read env at import time
+load_dotenv()  # ensure env is loaded before project imports that read os.environ at import time
 
 from bot.logging_config import setup as setup_logging
 setup_logging()
@@ -18,321 +24,254 @@ setup_logging()
 logger = logging.getLogger(__name__)
 
 import db.client as db
-from delivery.scheduler import get_due_deliveries, group_by_theme, check_expiry_reminders
-from delivery.fetcher import fetch_articles
+from delivery.scheduler import (
+    get_due_users,
+    user_today_start_utc_ts,
+    cleanup_seen_articles,
+    check_expiry_reminders,
+)
+from delivery.fetcher import fetch_today_articles
+from delivery.scoring import score_article, format_relevance
 from delivery.ai import summarize_articles
-from delivery import cache as theme_cache
-from delivery.poster import post_article, send_already_received_note
+from delivery.poster import post_article
 
-# Max parallel theme workers. Bounded to avoid hammering Telegram/AI APIs simultaneously.
-_MAX_THEME_WORKERS = 5
-
-
-def get_theme_info(theme_type: str, theme_id: int) -> dict | None:
-    """Fetch theme details (name, hashtag, rss_feeds) from DB."""
-    if theme_type == "default":
-        rows = db.execute(
-            "SELECT id, name, hashtag, rss_feeds FROM themes WHERE id = ? AND is_active = 1",
-            [theme_id],
-        )
-    else:
-        rows = db.execute(
-            "SELECT id, name, hashtag, rss_feeds FROM custom_themes WHERE id = ?",
-            [theme_id],
-        )
-    if not rows:
-        return None
-    row = rows[0]
-    return {
-        "id": row["id"],
-        "theme_type": theme_type,
-        "name": row["name"],
-        "hashtag": row["hashtag"],
-        "rss_feeds": json.loads(row["rss_feeds"]),
-    }
+_MAX_USER_WORKERS = 5
+_TELEGRAM_FLOOD_PAUSE = 0.1
 
 
-def _process_theme(
-    theme_type: str,
-    theme_id: int,
-    users: list[dict],
-    cutoff_ts: int,
-    now_ts: int,
-) -> dict:
-    """
-    Process a single theme: fetch, summarize, post.
-    Returns a result dict with counters, sent articles, delivery log statements, and theme info.
-    """
-    status = "ok"
-    articles_fetched = 0
-    articles_sent = 0
-    error_msg = None
-    theme_name = "unknown"
-    user_count = len(users)
-    sent_articles: list[dict] = []
-    delivery_log_statements: list[tuple] = []
-    posted_urls: list[str] = []
-    theme_info: dict | None = None
-
-    try:
-        theme = get_theme_info(theme_type, theme_id)
-        if not theme:
-            status = "error"
-            error_msg = "theme not found"
-            logger.warning("Theme not found: theme_type=%s theme_id=%d", theme_type, theme_id)
-            return _build_result(
-                theme_type, theme_id, theme_name, user_count,
-                status, articles_fetched, articles_sent, error_msg,
-                theme_info, sent_articles, delivery_log_statements, posted_urls,
-            )
-
-        theme_name = theme["name"]
-        theme_info = theme
-
-        # Rolling 24h article pool — score only genuinely new articles, deliver from full pool
-        pool = theme_cache.get_pool(theme_type, theme_id)
-        existing_urls = {a["url"] for a in pool}
-
-        raw_articles = fetch_articles(theme)
-        new_raw = [a for a in raw_articles if a["url"] not in existing_urls]
-        articles_fetched = len(new_raw)
-
-        if new_raw:
-            new_scored = summarize_articles(new_raw, theme["hashtag"])
-            # Merge into pool (update_pool handles prune + sort by relevance)
-            articles = theme_cache.update_pool(theme_type, theme_id, new_scored)
-        elif pool:
-            articles = pool  # nothing new this run, deliver from existing pool
-        else:
-            status = "no_articles"
-            return _build_result(
-                theme_type, theme_id, theme_name, user_count,
-                status, articles_fetched, articles_sent, error_msg,
-                theme_info, sent_articles, delivery_log_statements, posted_urls,
-            )
-
-        if not articles:
-            status = "ai_empty"
-            return _build_result(
-                theme_type, theme_id, theme_name, user_count,
-                status, articles_fetched, articles_sent, error_msg,
-                theme_info, sent_articles, delivery_log_statements, posted_urls,
-            )
-
-        sent_articles = articles
-
-        # Fan out to each user
-        for user in users:
-            # Per-user dedup: skip articles this user already received in last 24h
-            already_received = {
-                row["article_url"]
-                for row in db.execute(
-                    "SELECT article_url FROM delivery_log "
-                    "WHERE user_id = ? AND sent_at > ? AND status = 'sent'",
-                    [user["user_id"], cutoff_ts],
-                )
-            }
-            # Dedup first, then slice — ensures user gets top-N fresh articles
-            new_articles = [a for a in articles if a["url"] not in already_received]
-            new_articles = new_articles[:user["effective_articles_per_theme"]]
-
-            if not new_articles:
-                try:
-                    send_already_received_note(
-                        user["user_id"], theme_info["name"], theme_info["hashtag"]
-                    )
-                except Exception as e:
-                    logger.warning("Failed to send already-received note to %d: %s", user["user_id"], e)
-                continue
-
-            for article in new_articles:
-                try:
-                    post_article(user_id=user["user_id"], article=article)
-                    posted_urls.append(article["url"])
-                    articles_sent += 1
-                    delivery_log_statements.append((
-                        "INSERT INTO delivery_log (user_id, article_url, status, sent_at) VALUES (?, ?, ?, ?)",
-                        [user["user_id"], article["url"], "sent", now_ts]
-                    ))
-                    time.sleep(0.1)  # avoid Telegram flood limits
-                except Exception as e:
-                    logger.error("Failed to post to user %d: %s", user["user_id"], e)
-                    delivery_log_statements.append((
-                        "INSERT INTO delivery_log (user_id, article_url, status, sent_at) VALUES (?, ?, ?, ?)",
-                        [user["user_id"], article["url"], "failed", now_ts]
-                    ))
-
-        # Write delivery_log per-theme immediately so admin panel sees up-to-date counts
-        # even if other themes are still processing in parallel.
-        if delivery_log_statements:
-            try:
-                db.execute_many(delivery_log_statements)
-                delivery_log_statements = []  # mark as flushed
-            except Exception as e:
-                logger.error("Failed to write delivery_log for theme %s/%d: %s", theme_type, theme_id, e)
-
-    except Exception as e:
-        status = "error"
-        error_msg = str(e)
-        logger.error("Unexpected error processing theme %s: %s", theme_name, e)
-        try:
-            db.execute_many([(
-                "INSERT INTO delivery_errors (theme_id, theme_type, error_msg, occurred_at) VALUES (?, ?, ?, ?)",
-                [theme_id, theme_type, str(e), now_ts]
-            )])
-        except Exception as db_err:
-            logger.error("Failed to write delivery_error: %s", db_err)
-
-    return _build_result(
-        theme_type, theme_id, theme_name, user_count,
-        status, articles_fetched, articles_sent, error_msg,
-        theme_info, sent_articles, delivery_log_statements, posted_urls,
+def _load_feeds(user_id: int) -> list[str]:
+    rows = db.execute(
+        "SELECT url FROM user_feeds WHERE user_id = ? ORDER BY added_at",
+        [user_id],
     )
+    return [r["url"] for r in rows]
 
 
-def _build_result(
-    theme_type, theme_id, theme_name, user_count,
-    status, articles_fetched, articles_sent, error_msg,
-    theme_info, sent_articles, delivery_log_statements, posted_urls,
-) -> dict:
-    # Emit structured per-theme log
-    if error_msg:
-        logger.info(
-            "theme_id=%d theme_type=%s theme_name=%s user_count=%d "
-            "articles_fetched=%d articles_sent=%d status=%s error=%s",
-            theme_id, theme_type, theme_name, user_count,
-            articles_fetched, articles_sent, status, error_msg,
-        )
-    else:
-        logger.info(
-            "theme_id=%d theme_type=%s theme_name=%s user_count=%d "
-            "articles_fetched=%d articles_sent=%d status=%s",
-            theme_id, theme_type, theme_name, user_count,
-            articles_fetched, articles_sent, status,
-        )
-    return {
-        "theme_type": theme_type,
-        "theme_id": theme_id,
-        "theme_name": theme_name,
-        "user_count": user_count,
-        "status": status,
-        "articles_fetched": articles_fetched,
-        "articles_sent": articles_sent,
-        "error_msg": error_msg,
-        "theme_info": theme_info,
-        "sent_articles": sent_articles,
-        "delivery_log_statements": delivery_log_statements,
-        "posted_urls": posted_urls,
-    }
+def _load_keywords(user_id: int) -> list[str]:
+    rows = db.execute(
+        "SELECT keyword FROM user_keywords WHERE user_id = ? ORDER BY added_at",
+        [user_id],
+    )
+    return [r["keyword"] for r in rows]
 
 
-def run():
-    now_utc = datetime.now(timezone.utc)
-    run_start = time.monotonic()
-    hour_utc = now_utc.hour
-    weekday = now_utc.isoweekday()  # 1=Mon...7=Sun
+def _recent_sent_urls(user_id: int, since_ts: int) -> set[str]:
+    rows = db.execute(
+        "SELECT article_url FROM delivery_log "
+        "WHERE user_id = ? AND sent_at > ? AND status = 'sent'",
+        [user_id, since_ts],
+    )
+    return {r["article_url"] for r in rows}
 
-    logger.info("run start: hour=%d weekday=%d", hour_utc, weekday)
 
-    # Step 1: find users due this hour
-    deliveries = get_due_deliveries(hour_utc=hour_utc, weekday=weekday)
-    if not deliveries:
-        logger.info("No users due this hour")
-        check_expiry_reminders()
-        duration = time.monotonic() - run_start
-        logger.info("run complete: themes=0 users=0 articles_sent=0 errors=0 duration=%.1fs", duration)
+def _existing_seen_urls(user_id: int) -> set[str]:
+    rows = db.execute(
+        "SELECT article_url FROM seen_articles WHERE user_id = ?",
+        [user_id],
+    )
+    return {r["article_url"] for r in rows}
+
+
+def _write_feed_errors(user_id: int, errors: list[tuple[str, str]], now_ts: int) -> None:
+    if not errors:
         return
-
-    # Step 2: group by theme
-    groups = group_by_theme(deliveries)
-    logger.info("%d unique theme(s) to process for %d delivery row(s)", len(groups), len(deliveries))
-
-    now_ts = int(time.time())
-    cutoff_ts = now_ts - 24 * 3600
-
-    # Step 3: process all themes in parallel
-    futures_map = {}
-    with ThreadPoolExecutor(max_workers=_MAX_THEME_WORKERS) as executor:
-        for (theme_type, theme_id), users in groups.items():
-            future = executor.submit(
-                _process_theme,
-                theme_type, theme_id, users,
-                cutoff_ts, now_ts,
+    try:
+        db.execute_many([
+            (
+                "INSERT INTO delivery_errors (user_id, feed_url, error_msg, occurred_at) "
+                "VALUES (?, ?, ?, ?)",
+                [user_id, feed_url, err, now_ts],
             )
-            futures_map[future] = (theme_type, theme_id)
+            for feed_url, err in errors
+        ])
+    except Exception as e:
+        logger.warning("Failed to write delivery_errors for %d: %s", user_id, e)
 
-    results = []
-    for future in as_completed(futures_map):
+
+def _deliver_user(user: dict, now_utc: datetime) -> dict:
+    user_id = user["user_id"]
+    tz = user["timezone"]
+    now_ts = int(now_utc.timestamp())
+    today_start_ts = user_today_start_utc_ts(tz, now_utc)
+
+    feeds = _load_feeds(user_id)
+    keywords = _load_keywords(user_id)
+    if not feeds or not keywords:
+        logger.info(
+            "skip user=%d reason=no_config feeds=%d keywords=%d",
+            user_id, len(feeds), len(keywords),
+        )
+        return {"user_id": user_id, "status": "no_config", "sent": 0, "failed": 0}
+
+    recent_sent = _recent_sent_urls(user_id, now_ts - 24 * 3600)
+    seen_urls = _existing_seen_urls(user_id)
+
+    fetch_errors: list[tuple[str, str]] = []
+    new_rows: list[tuple] = []
+
+    for feed_url in feeds:
         try:
-            results.append(future.result())
+            articles = fetch_today_articles(feed_url, today_start_ts)
         except Exception as e:
-            theme_type, theme_id = futures_map[future]
-            logger.error("Unhandled exception in theme worker (%s, %d): %s", theme_type, theme_id, e)
-
-    # Step 4: aggregate and write to DB
-    total_themes = len(results)
-    total_users_served = sum(r["user_count"] for r in results)
-    total_articles_sent = sum(r["articles_sent"] for r in results)
-    total_errors = sum(1 for r in results if r["status"] == "error")
-
-    all_posted_urls: list[str] = []
-    all_delivery_logs: list[tuple] = []
-    for r in results:
-        all_posted_urls.extend(r["posted_urls"])
-        all_delivery_logs.extend(r["delivery_log_statements"])
-
-    # Mark URLs as posted (global dedup)
-    if all_posted_urls:
-        statements = [
-            ("INSERT OR IGNORE INTO posted_articles (url, posted_at) VALUES (?, ?)", [url, now_ts])
-            for url in set(all_posted_urls)
-        ]
-        db.execute_many(statements)
-
-    # Batch insert delivery_log
-    if all_delivery_logs:
-        try:
-            db.execute_many(all_delivery_logs)
-        except Exception as e:
-            logger.error("Failed to write delivery_log: %s", e)
-
-    # Step 5: digest history for monthly users (batch per group)
-    for r in results:
-        theme = r["theme_info"]
-        articles = r["sent_articles"]
-        if not theme or not articles:
+            fetch_errors.append((feed_url, f"{type(e).__name__}: {e}"))
             continue
 
-        theme_type = r["theme_type"]
-        theme_id = r["theme_id"]
-        users = groups[(theme_type, theme_id)]
-
-        digest_statements = []
-        for user in users:
-            if user.get("effective_tier") != "monthly":
+        for article in articles:
+            url = article["url"]
+            if url in recent_sent or url in seen_urls:
                 continue
-            user_articles = articles[:user["effective_articles_per_theme"]]
-            digest_statements.append((
-                "INSERT INTO digest_history "
-                "(user_id, theme_type, theme_id, theme_name, articles, sent_at) "
-                "VALUES (?, ?, ?, ?, ?, ?)",
-                [user["user_id"], theme_type, theme_id,
-                 theme["name"], json.dumps(user_articles), now_ts],
+            score, breakdown = score_article(article["title"], article["body"], keywords)
+            new_rows.append((
+                "INSERT OR IGNORE INTO seen_articles "
+                "(user_id, feed_url, article_url, article_title, article_body, "
+                "score, match_breakdown, fetched_at, sent_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL)",
+                [
+                    user_id, feed_url, url, article["title"], article["body"],
+                    score, json.dumps(breakdown), now_ts,
+                ],
+            ))
+            seen_urls.add(url)
+
+    if new_rows:
+        try:
+            db.execute_many(new_rows)
+        except Exception as e:
+            logger.error("Failed to insert seen_articles for %d: %s", user_id, e)
+
+    pool = db.execute(
+        "SELECT id, feed_url, article_url, article_title, article_body, score, match_breakdown "
+        "FROM seen_articles "
+        "WHERE user_id = ? AND sent_at IS NULL AND score > 0 "
+        "ORDER BY score DESC",
+        [user_id],
+    )
+
+    by_feed: dict[str, list[dict]] = {}
+    for row in pool:
+        by_feed.setdefault(row["feed_url"], []).append(row)
+
+    selected: list[dict] = []
+    for feed_url in feeds:
+        selected.extend(by_feed.get(feed_url, [])[:2])
+
+    if not selected:
+        _write_feed_errors(user_id, fetch_errors, now_ts)
+        logger.info(
+            "user=%d feeds=%d keywords=%d new_seen=%d sent=0 status=no_matches",
+            user_id, len(feeds), len(keywords), len(new_rows),
+        )
+        return {"user_id": user_id, "status": "no_matches", "sent": 0, "failed": 0}
+
+    ai_inputs = [
+        {"url": s["article_url"], "title": s["article_title"], "body": s["article_body"]}
+        for s in selected
+    ]
+    summaries = summarize_articles(ai_inputs)
+    summary_by_url = {s["url"]: s for s in summaries}
+
+    sent = 0
+    failed = 0
+    update_stmts: list[tuple] = []
+
+    for s in selected:
+        ai = summary_by_url.get(s["article_url"])
+        if not ai:
+            # AI flagged skip=true, or this article fell off after a provider retry
+            continue
+        try:
+            breakdown = json.loads(s["match_breakdown"])
+        except (json.JSONDecodeError, TypeError):
+            breakdown = {}
+        article = {
+            "url": s["article_url"],
+            "title": s["article_title"],
+            "summary": ai.get("summary", ""),
+            "is_important": ai.get("is_important"),
+            "importance_detail": ai.get("importance_detail", ""),
+            "relevance": format_relevance(breakdown),
+        }
+        try:
+            post_article(user_id=user_id, article=article)
+            sent += 1
+            update_stmts.append((
+                "UPDATE seen_articles SET sent_at = ? WHERE id = ?",
+                [now_ts, s["id"]],
+            ))
+            update_stmts.append((
+                "INSERT INTO delivery_log (user_id, article_url, status, sent_at) "
+                "VALUES (?, ?, 'sent', ?)",
+                [user_id, s["article_url"], now_ts],
+            ))
+            time.sleep(_TELEGRAM_FLOOD_PAUSE)
+        except Exception as e:
+            failed += 1
+            logger.error("post_article failed user=%d url=%s err=%s", user_id, s["article_url"], e)
+            update_stmts.append((
+                "INSERT INTO delivery_log (user_id, article_url, status, sent_at) "
+                "VALUES (?, ?, 'failed', ?)",
+                [user_id, s["article_url"], now_ts],
             ))
 
-        if digest_statements:
-            try:
-                db.execute_many(digest_statements)
-            except Exception as e:
-                logger.error("Failed to write digest history for theme (%s, %d): %s", theme_type, theme_id, e)
+    if update_stmts:
+        try:
+            db.execute_many(update_stmts)
+        except Exception as e:
+            logger.error("Failed to persist delivery state for %d: %s", user_id, e)
 
-    # Step 6: expiry reminders
-    check_expiry_reminders()
+    _write_feed_errors(user_id, fetch_errors, now_ts)
+
+    logger.info(
+        "user=%d feeds=%d keywords=%d new_seen=%d sent=%d failed=%d status=ok",
+        user_id, len(feeds), len(keywords), len(new_rows), sent, failed,
+    )
+    return {"user_id": user_id, "status": "ok", "sent": sent, "failed": failed}
+
+
+def _deliver_safely(user: dict, now_utc: datetime) -> dict:
+    try:
+        return _deliver_user(user, now_utc)
+    except Exception as e:
+        logger.exception("Unhandled delivery error for user %d: %s", user["user_id"], e)
+        try:
+            db.execute_many([(
+                "INSERT INTO delivery_errors (user_id, feed_url, error_msg, occurred_at) "
+                "VALUES (?, NULL, ?, ?)",
+                [user["user_id"], f"unhandled: {e}", int(now_utc.timestamp())],
+            )])
+        except Exception:
+            pass
+        return {"user_id": user["user_id"], "status": "error", "sent": 0, "failed": 0}
+
+
+def run() -> None:
+    now_utc = datetime.now(timezone.utc)
+    run_start = time.monotonic()
+    logger.info("run start hour_utc=%d", now_utc.hour)
+
+    due = get_due_users(now_utc)
+    if not due:
+        logger.info("run skip: no users due this hour")
+        check_expiry_reminders()
+        cleanup_seen_articles()
+        return
+
+    logger.info("processing %d due user(s)", len(due))
+
+    with ThreadPoolExecutor(max_workers=_MAX_USER_WORKERS) as executor:
+        results = list(executor.map(lambda u: _deliver_safely(u, now_utc), due))
+
+    sent_total = sum(r["sent"] for r in results)
+    failed_total = sum(r["failed"] for r in results)
+    errors_total = sum(1 for r in results if r["status"] == "error")
     duration = time.monotonic() - run_start
     logger.info(
-        "run complete: themes=%d users=%d articles_sent=%d errors=%d duration=%.1fs",
-        total_themes, total_users_served, total_articles_sent, total_errors, duration,
+        "run complete users=%d sent=%d failed=%d errors=%d duration=%.1fs",
+        len(due), sent_total, failed_total, errors_total, duration,
     )
+
+    check_expiry_reminders()
+    cleanup_seen_articles()
 
 
 if __name__ == "__main__":

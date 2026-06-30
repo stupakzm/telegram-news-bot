@@ -32,9 +32,9 @@ def _build_status_text() -> str:
     revenue_rows = db.execute("SELECT SUM(stars_paid) as total FROM users")
     revenue = revenue_rows[0]["total"] if revenue_rows and revenue_rows[0]["total"] else 0
 
-    # Recent errors from delivery_errors (D-03)
+    # Recent errors from delivery_errors (now per-feed_url + optional user_id)
     errors = db.execute(
-        "SELECT theme_id, theme_type, error_msg, occurred_at "
+        "SELECT user_id, feed_url, error_msg, occurred_at "
         "FROM delivery_errors ORDER BY occurred_at DESC LIMIT 5"
     )
 
@@ -42,8 +42,9 @@ def _build_status_text() -> str:
     if errors:
         for err in errors:
             err_dt = time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime(err["occurred_at"]))
+            ref = err["feed_url"] or (f"user={err['user_id']}" if err["user_id"] else "global")
             error_lines.append(
-                f"\u2022 `[{err_dt}]` theme\\_id={err['theme_id']} \u2014 {err['error_msg']}"
+                f"\u2022 `[{err_dt}]` {ref} \u2014 {err['error_msg']}"
             )
     else:
         error_lines = ["None"]

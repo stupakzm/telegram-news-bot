@@ -1,5 +1,5 @@
-# tests/bot/test_settings.py
-import os, json
+import os
+import time
 from unittest.mock import patch
 
 os.environ.setdefault("TURSO_URL", "https://test.turso.io")
@@ -13,57 +13,59 @@ def _msg(user_id=1):
 
 @patch("bot.commands.settings.tg.send_message")
 @patch("bot.commands.settings.db.execute", return_value=[])
-def test_settings_prompts_start_for_unknown_user(mock_execute, mock_send):
+def test_settings_prompts_start_for_unknown_user(mock_exec, mock_send):
     from bot.commands.settings import handle
     handle(_msg())
     text = mock_send.call_args[1].get("text", "")
     assert "/start" in text
 
 
-@patch("bot.commands.settings.tg.send_message")
-@patch("bot.commands.settings.db.execute", side_effect=[
-    [{"tier": "free", "tier_expires_at": None}],  # user query
-    [],  # themes
-    [],  # schedules
-])
-def test_settings_free_user_gets_upgrade_button(mock_execute, mock_send):
-    from bot.commands.settings import handle
-    handle(_msg())
-    markup = mock_send.call_args[1].get("reply_markup", {})
-    buttons = [btn for row in markup.get("inline_keyboard", []) for btn in row]
-    # Upgrade button shown only when UPGRADE_ENABLED is True
-    from bot.config import UPGRADE_ENABLED
-    if UPGRADE_ENABLED:
-        assert any("Upgrade" in b["text"] for b in buttons)
-    else:
-        assert not any("Upgrade" in b["text"] for b in buttons)
-
-
-@patch("bot.commands.settings.tg.send_message")
-@patch("bot.commands.settings.db.execute", side_effect=[
-    [{"tier": "monthly", "tier_expires_at": None}],  # user query
-    [],  # themes
-    [],  # schedules
-])
-def test_settings_monthly_user_no_upgrade_button(mock_execute, mock_send):
-    from bot.commands.settings import handle
-    handle(_msg())
-    markup = mock_send.call_args[1].get("reply_markup", {})
-    buttons = [btn for row in markup.get("inline_keyboard", []) for btn in row]
-    assert not any("Upgrade" in b["text"] for b in buttons)
-
-
-@patch("bot.commands.settings.tg.send_message")
-@patch("bot.commands.settings.db.execute", side_effect=[
-    [{"tier": "free", "tier_expires_at": None}],
-    [{"user_theme_id": 1, "theme_type": "default", "theme_id": 2, "articles_per_theme": 1,
-      "default_name": "Technology", "custom_name": None}],
-    [{"days": json.dumps([1, 2, 3]), "hour_utc": 8, "user_theme_id": None}],
-])
-def test_settings_shows_theme_and_schedule(mock_execute, mock_send):
+@patch("bot.commands.settings.tg.send_message", return_value={"message_id": 1})
+@patch("bot.commands.settings.db.execute")
+def test_settings_active_user_shows_plan_and_counts(mock_exec, mock_send):
+    future = int(time.time()) + 86400
+    mock_exec.side_effect = [
+        [{"tier": "vip", "tier_expires_at": future, "timezone": "Europe/Kyiv"}],
+        [{"url": "u1"}, {"url": "u2"}],
+        [{"keyword": "AI"}, {"keyword": "Tesla"}, {"keyword": "GPU"}],
+    ]
     from bot.commands.settings import handle
     handle(_msg())
     text = mock_send.call_args[1].get("text", "")
-    assert "Technology" in text
-    assert "Mon" in text
-    assert "08:00" in text
+    assert "VIP" in text
+    assert "Europe/Kyiv" in text
+    assert "*Feeds:* 2" in text
+    assert "*Keywords:* 3" in text
+
+
+@patch("bot.commands.settings.tg.send_message", return_value={"message_id": 1})
+@patch("bot.commands.settings.db.execute_many")
+@patch("bot.commands.settings.db.execute")
+def test_settings_auto_expires_past_plan(mock_exec, mock_exec_many, mock_send):
+    past = int(time.time()) - 86400
+    mock_exec.side_effect = [
+        [{"tier": "vip", "tier_expires_at": past, "timezone": "UTC"}],
+        [],
+        [],
+    ]
+    from bot.commands.settings import handle
+    handle(_msg())
+    sql, _ = mock_exec_many.call_args[0][0][0]
+    assert "tier = 'expired'" in sql
+    text = mock_send.call_args[1].get("text", "")
+    assert "Expired" in text
+
+
+@patch("bot.commands.settings.tg.send_message", return_value={"message_id": 1})
+@patch("bot.commands.settings.db.execute")
+def test_settings_default_timezone_is_utc(mock_exec, mock_send):
+    mock_exec.side_effect = [
+        [{"tier": "trial", "tier_expires_at": int(time.time()) + 86400, "timezone": None}],
+        [],
+        [],
+    ]
+    from bot.commands.settings import handle
+    handle(_msg())
+    text = mock_send.call_args[1].get("text", "")
+    assert "UTC" in text
+    assert "Trial" in text

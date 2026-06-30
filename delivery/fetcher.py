@@ -1,41 +1,95 @@
+"""Fetch RSS feeds, return today's articles with full body text."""
+import calendar
+import html
 import logging
-logger = logging.getLogger(__name__)
+import re
+
 import feedparser
-import db.client as db
+import requests
+
 from bot.validation import validate_rss_url
 
+logger = logging.getLogger(__name__)
 
-def fetch_articles(theme: dict) -> list[dict]:
-    """
-    Fetch new articles for a theme (default or custom).
-    Returns list of article dicts. Per-user dedup is handled downstream via delivery_log.
+_HTML_TAG_RE = re.compile(r"<[^>]+>")
+_WHITESPACE_RE = re.compile(r"\s+")
 
-    theme dict keys: id, theme_type, name, hashtag, rss_feeds (list of URLs)
-    """
-    articles = []
-    seen_urls: set[str] = set()  # deduplicate within this fetch call only
+_MAX_BODY_CHARS = 8000          # caps DB row size and AI prompt cost
+_FETCH_TIMEOUT_SECONDS = 8
+_USER_AGENT = "newsbot/1.0 (+https://t.me/)"
 
-    for feed_url in theme["rss_feeds"]:
-        if not validate_rss_url(feed_url):
-            logger.warning("Skipping restricted RSS URL: %s", feed_url)
-            continue
+
+def _strip_html(raw: str) -> str:
+    if not raw:
+        return ""
+    text = _HTML_TAG_RE.sub(" ", raw)
+    text = html.unescape(text)
+    return _WHITESPACE_RE.sub(" ", text).strip()
+
+
+def _entry_body(entry) -> str:
+    """Prefer the full <content:encoded> body when present, fall back to summary."""
+    content = getattr(entry, "content", None)
+    if content:
         try:
-            feed = feedparser.parse(feed_url)
-            for entry in feed.entries:
-                url = getattr(entry, "link", None)
-                if not url or url in seen_urls:
-                    continue
-                seen_urls.add(url)
-                articles.append({
-                    "url": url,
-                    "title": getattr(entry, "title", ""),
-                    "description": getattr(entry, "summary", ""),
-                    "theme_type": theme["theme_type"],
-                    "theme_id": theme["id"],
-                    "hashtag": theme["hashtag"],
-                })
-        except Exception as e:
-            logger.warning("RSS feed failed: url=%s error=%s", feed_url, e)
+            return content[0].get("value", "") or ""
+        except (IndexError, AttributeError, TypeError):
+            pass
+    return getattr(entry, "summary", "") or ""
+
+
+def _entry_timestamp(entry) -> int | None:
+    for attr in ("published_parsed", "updated_parsed"):
+        struct = getattr(entry, attr, None)
+        if struct:
+            try:
+                return calendar.timegm(struct)
+            except (TypeError, ValueError):
+                continue
+    return None
+
+
+def fetch_today_articles(feed_url: str, today_start_ts: int) -> list[dict]:
+    """
+    Fetch a feed and return entries dated on/after today_start_ts.
+
+    Returns: list of {url, title, body, published_at} dicts.
+    Entries without a parseable date are included (treated as fresh) so feeds
+    that omit timestamps still surface in the pool.
+
+    Raises requests.RequestException on transport errors so the caller can
+    log the failure to delivery_errors and skip the URL.
+    """
+    if not validate_rss_url(feed_url):
+        logger.warning("fetch_today_articles: blocked unsafe URL %s", feed_url)
+        return []
+
+    resp = requests.get(
+        feed_url,
+        timeout=_FETCH_TIMEOUT_SECONDS,
+        headers={"User-Agent": _USER_AGENT},
+    )
+    resp.raise_for_status()
+
+    parsed = feedparser.parse(resp.content)
+    articles: list[dict] = []
+
+    for entry in parsed.entries:
+        url = getattr(entry, "link", None)
+        title = getattr(entry, "title", None)
+        if not url or not title:
             continue
+
+        published_at = _entry_timestamp(entry)
+        if published_at is not None and published_at < today_start_ts:
+            continue
+
+        body = _strip_html(_entry_body(entry))[:_MAX_BODY_CHARS]
+        articles.append({
+            "url": url,
+            "title": _strip_html(title),
+            "body": body,
+            "published_at": published_at or 0,
+        })
 
     return articles

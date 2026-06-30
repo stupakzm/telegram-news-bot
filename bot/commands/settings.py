@@ -1,77 +1,62 @@
-# bot/commands/settings.py
-import json
-from datetime import datetime, timezone
+import time
+from datetime import datetime, timezone as _utc
+
 import db.client as db
 import bot.telegram as tg
-from bot.config import UPGRADE_ENABLED
+
+_TIER_LABEL = {"trial": "Trial (VIP)", "vip": "VIP", "svip": "SVIP", "expired": "Expired"}
+
+
+def _tier_label(tier: str) -> str:
+    return _TIER_LABEL.get(tier, tier)
 
 
 def handle(message: dict) -> None:
     user_id = message["from"]["id"]
+    chat_id = message["chat"]["id"]
 
-    user = db.execute("SELECT tier, tier_expires_at FROM users WHERE user_id = ?", [user_id])
-    if not user:
-        tg.send_message(chat_id=user_id, text="Please /start the bot first.")
+    user_rows = db.execute(
+        "SELECT tier, tier_expires_at, timezone FROM users WHERE user_id = ?",
+        [user_id],
+    )
+    if not user_rows:
+        tg.send_message(chat_id=chat_id, text="Please /start the bot first.")
         return
 
-    tier = user[0]["tier"]
-    expires = user[0]["tier_expires_at"]
+    tier = user_rows[0]["tier"]
+    expires_at = user_rows[0]["tier_expires_at"]
+    tz = user_rows[0]["timezone"] or "UTC"
 
-    themes = db.execute(
-        """
-        SELECT ut.id as user_theme_id, ut.theme_type, ut.theme_id, ut.articles_per_theme,
-               t.name as default_name, ct.name as custom_name
-        FROM user_themes ut
-        LEFT JOIN themes t ON ut.theme_type = 'default' AND t.id = ut.theme_id
-        LEFT JOIN custom_themes ct ON ut.theme_type = 'custom' AND ct.id = ut.theme_id
-        WHERE ut.user_id = ?
-        """,
-        [user_id],
-    )
+    now = int(time.time())
+    if tier in ("trial", "vip", "svip") and expires_at and now > expires_at:
+        db.execute_many([(
+            "UPDATE users SET tier = 'expired', tier_expires_at = NULL WHERE user_id = ?",
+            [user_id],
+        )])
+        tier = "expired"
+        expires_at = None
 
-    schedules = db.execute(
-        "SELECT days, hour_utc, user_theme_id FROM user_schedules WHERE user_id = ?",
-        [user_id],
-    )
+    feeds = db.execute("SELECT url FROM user_feeds WHERE user_id = ?", [user_id])
+    keywords = db.execute("SELECT keyword FROM user_keywords WHERE user_id = ?", [user_id])
 
-    tier_label = {"free": "Free", "one_time": "One-time", "monthly": "Monthly"}.get(tier, tier)
-    if tier == "monthly" and expires:
-        exp_dt = datetime.fromtimestamp(expires, tz=timezone.utc).strftime("%b %d, %Y")
-        tier_label += f" (renews {exp_dt})"
-
-    theme_name_by_user_theme_id = {}
-    theme_lines = []
-    for t in themes:
-        name = t["default_name"] or t["custom_name"] or "?"
-        theme_name_by_user_theme_id[t["user_theme_id"]] = name
-        tag = " (custom)" if t["theme_type"] == "custom" else ""
-        theme_lines.append(f"  • {name}{tag} — {t['articles_per_theme']} article(s)/delivery")
-
-    schedule_lines = []
-    for s in schedules:
-        try:
-            days = json.loads(s["days"])
-        except (json.JSONDecodeError, TypeError):
-            continue
-        day_names = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
-        day_str = ", ".join(day_names[d - 1] for d in days)
-        scope = "All themes" if s["user_theme_id"] is None else theme_name_by_user_theme_id.get(s["user_theme_id"], f"Theme {s['user_theme_id']}")
-        schedule_lines.append(f"  • {scope}: {day_str} at {s['hour_utc']:02d}:00 UTC")
+    if expires_at:
+        exp_dt = datetime.fromtimestamp(expires_at, tz=_utc.utc).strftime("%b %d, %Y")
+        plan_line = f"*Plan:* {_tier_label(tier)} (expires {exp_dt} UTC)"
+    else:
+        plan_line = f"*Plan:* {_tier_label(tier)}"
 
     text = (
-        f"⚙️ *Your Settings*\n\n"
-        f"*Plan:* {tier_label}\n\n"
-        f"*Themes ({len(themes)}):*\n" + ("\n".join(theme_lines) or "  None set") + "\n\n"
-        f"*Schedule:*\n" + ("\n".join(schedule_lines) or "  None set")
+        "⚙️ *Your Settings*\n\n"
+        f"{plan_line}\n"
+        f"*Timezone:* {tz}\n"
+        f"*Feeds:* {len(feeds)}\n"
+        f"*Keywords:* {len(keywords)}\n\n"
+        "• /keywords — manage filter words\n"
+        "• /addurl — manage RSS feeds\n"
+        "• /timezone — set timezone\n"
+        "• /plan — buy or switch plan\n"
     )
 
-    buttons = [
-        [{"text": "📰 Manage Themes", "callback_data": "themes:browse"}],
-        [{"text": "⏰ Change Schedule", "callback_data": "schedule:setup"}],
-    ]
-    if tier == "free" and UPGRADE_ENABLED:
-        buttons.append([{"text": "⭐ Upgrade Plan", "callback_data": "upgrade:show"}])
-
-    result = tg.send_message(chat_id=user_id, text=text, reply_markup={"inline_keyboard": buttons})
+    result = tg.send_message(chat_id=chat_id, text=text)
     if result.get("message_id"):
         db.track_bot_message(user_id, result["message_id"])
