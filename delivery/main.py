@@ -11,6 +11,7 @@ users.
 """
 import json
 import logging
+import re
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
@@ -38,6 +39,24 @@ from delivery.poster import post_article
 _MAX_USER_WORKERS = 5
 _TELEGRAM_FLOOD_PAUSE = 0.1
 
+# Jaccard word-overlap threshold for near-duplicate titles across feeds.
+_TITLE_SIMILARITY_THRESHOLD = 0.6
+_TITLE_STOP_WORDS = {
+    "the", "a", "an", "in", "on", "at", "to", "for", "of", "and", "or",
+    "is", "are", "was", "were", "it",
+}
+
+
+def _title_words(title: str) -> set[str]:
+    words = re.sub(r"[^\w\s]", "", title.lower()).split()
+    return {w for w in words if w not in _TITLE_STOP_WORDS and len(w) > 1}
+
+
+def _titles_similar(w1: set[str], w2: set[str]) -> bool:
+    if not w1 or not w2:
+        return False
+    return len(w1 & w2) / len(w1 | w2) >= _TITLE_SIMILARITY_THRESHOLD
+
 
 def _load_feeds(user_id: int) -> list[str]:
     rows = db.execute(
@@ -64,12 +83,14 @@ def _recent_sent_urls(user_id: int, since_ts: int) -> set[str]:
     return {r["article_url"] for r in rows}
 
 
-def _existing_seen_urls(user_id: int) -> set[str]:
+def _existing_seen_urls_and_titles(user_id: int) -> tuple[set[str], list[set[str]]]:
     rows = db.execute(
-        "SELECT article_url FROM seen_articles WHERE user_id = ?",
+        "SELECT article_url, article_title FROM seen_articles WHERE user_id = ?",
         [user_id],
     )
-    return {r["article_url"] for r in rows}
+    urls = {r["article_url"] for r in rows}
+    title_word_sets = [_title_words(r["article_title"]) for r in rows]
+    return urls, title_word_sets
 
 
 def _write_feed_errors(user_id: int, errors: list[tuple[str, str]], now_ts: int) -> None:
@@ -104,7 +125,7 @@ def _deliver_user(user: dict, now_utc: datetime) -> dict:
         return {"user_id": user_id, "status": "no_config", "sent": 0, "failed": 0}
 
     recent_sent = _recent_sent_urls(user_id, now_ts - 24 * 3600)
-    seen_urls = _existing_seen_urls(user_id)
+    seen_urls, seen_title_words = _existing_seen_urls_and_titles(user_id)
 
     fetch_errors: list[tuple[str, str]] = []
     new_rows: list[tuple] = []
@@ -120,6 +141,9 @@ def _deliver_user(user: dict, now_utc: datetime) -> dict:
             url = article["url"]
             if url in recent_sent or url in seen_urls:
                 continue
+            title_words = _title_words(article["title"])
+            if any(_titles_similar(title_words, prev) for prev in seen_title_words):
+                continue
             score, breakdown = score_article(article["title"], article["body"], keywords)
             new_rows.append((
                 "INSERT OR IGNORE INTO seen_articles "
@@ -132,6 +156,7 @@ def _deliver_user(user: dict, now_utc: datetime) -> dict:
                 ],
             ))
             seen_urls.add(url)
+            seen_title_words.append(title_words)
 
     if new_rows:
         try:
