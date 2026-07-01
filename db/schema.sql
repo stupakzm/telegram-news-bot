@@ -100,3 +100,12 @@ CREATE TABLE IF NOT EXISTS article_reactions (
 
 CREATE INDEX IF NOT EXISTS idx_article_reactions_reaction
     ON article_reactions(reaction);
+
+CREATE TABLE IF NOT EXISTS rate_limit_log (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id     INTEGER NOT NULL,
+    occurred_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_rate_limit_log_user_time
+    ON rate_limit_log(user_id, occurred_at DESC);
