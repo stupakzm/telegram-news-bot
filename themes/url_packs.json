@@ -17,11 +17,10 @@
       "https://openai.com/blog/rss.xml",
       "https://huggingface.co/blog/feed.xml",
       "https://blog.google/technology/ai/rss/",
-      "https://www.anthropic.com/rss.xml",
-      "https://www.unite.ai/feed/",
+      "https://research.google/blog/rss/",
+      "https://engineering.fb.com/feed/",
       "https://towardsdatascience.com/feed",
-      "https://machinelearningmastery.com/blog/feed/",
-      "https://ai.meta.com/blog/feed/"
+      "https://machinelearningmastery.com/blog/feed/"
     ]
   },
   {
@@ -33,7 +32,7 @@
       "https://www.schneier.com/feed/atom/",
       "https://thehackernews.com/feeds/posts/default",
       "https://www.bleepingcomputer.com/feed/",
-      "https://www.darkreading.com/rss/all.xml",
+      "https://www.darkreading.com/rss.xml",
       "https://threatpost.com/feed/",
       "https://www.csoonline.com/feed/"
     ]
@@ -53,11 +52,11 @@
   {
     "name": "Tech Companies",
     "urls": [
-      "https://feeds.reuters.com/reuters/technologyNews",
+      "https://www.zdnet.com/news/rss.xml",
       "https://feeds.bloomberg.com/technology/news.rss",
       "https://www.cnbc.com/id/19854910/device/rss/rss.html",
       "https://fortune.com/feed/",
-      "https://www.businessinsider.com/sai/features/rss",
+      "https://www.businessinsider.com/rss",
       "https://www.techmeme.com/feed.xml"
     ]
   },
@@ -67,7 +66,7 @@
       "https://www.tomshardware.com/feeds/all",
       "https://www.extremetech.com/feed",
       "https://www.pcworld.com/feed",
-      "https://www.guru3d.com/news/rss",
+      "https://www.guru3d.com/rss.xml",
       "https://www.digitaltrends.com/feed/"
     ]
   }
