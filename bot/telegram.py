@@ -51,6 +51,15 @@ def answer_callback_query(callback_query_id: str, text: str = "") -> None:
                   timeout=10)
 
 
+def answer_pre_checkout_query(pre_checkout_query_id: str, ok: bool,
+                              error_message: str = "") -> None:
+    """Confirm or reject a pending Stars payment within Telegram's 10s window."""
+    payload = {"pre_checkout_query_id": pre_checkout_query_id, "ok": ok}
+    if not ok and error_message:
+        payload["error_message"] = error_message
+    requests.post(_url("answerPreCheckoutQuery"), json=payload, timeout=10)
+
+
 def send_invoice(chat_id: int, title: str, description: str, payload: str,
                  currency: str, prices: list[dict]) -> dict:
     """Send a Telegram Stars payment invoice. currency must be 'XTR' for Stars."""

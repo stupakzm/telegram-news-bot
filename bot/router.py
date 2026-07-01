@@ -127,6 +127,14 @@ def handle_update(update: dict) -> None:
         _handle_callback(update["callback_query"])
         return
 
+    if "pre_checkout_query" in update:
+        # Telegram gives us 10 seconds to confirm before it cancels the charge.
+        # We always confirm — the invoice payload was constructed by us, and
+        # tier validation happens on successful_payment.
+        pcq = update["pre_checkout_query"]
+        tg.answer_pre_checkout_query(pcq["id"], ok=True)
+        return
+
     message = update.get("message", {})
     if not message:
         return
