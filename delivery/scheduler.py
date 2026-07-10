@@ -88,17 +88,21 @@ def check_expiry_reminders() -> None:
     """Nudge VIP/SVIP users whose plan expires within 3 days. Once per cooldown."""
     now = int(time.time())
     window_end = now + EXPIRY_REMINDER_WINDOW
-    users = db.execute(
-        """
-        SELECT user_id, tier_expires_at, last_reminder_at
-        FROM users
-        WHERE tier IN ('vip', 'svip')
-          AND tier_expires_at IS NOT NULL
-          AND tier_expires_at BETWEEN ? AND ?
-          AND (last_reminder_at IS NULL OR last_reminder_at < ?)
-        """,
-        [now, window_end, now - REMINDER_COOLDOWN],
-    )
+    try:
+        users = db.execute(
+            """
+            SELECT user_id, tier_expires_at, last_reminder_at
+            FROM users
+            WHERE tier IN ('vip', 'svip')
+              AND tier_expires_at IS NOT NULL
+              AND tier_expires_at BETWEEN ? AND ?
+              AND (last_reminder_at IS NULL OR last_reminder_at < ?)
+            """,
+            [now, window_end, now - REMINDER_COOLDOWN],
+        )
+    except Exception as e:
+        logger.warning("check_expiry_reminders query failed: %s", e)
+        return
     if not users:
         return
 

@@ -3,8 +3,11 @@ import time as _time
 import requests
 
 
-_RETRY_ATTEMPTS = 3
-_RETRY_BACKOFF = [1, 2]  # seconds to wait before attempt 2, 3
+_RETRY_ATTEMPTS = 4
+_RETRY_BACKOFF = [1, 2, 4]  # seconds to wait before attempt 2, 3, 4
+# Turso's serverless edge DB can cold-start slowly when the hourly cron hits it
+# idle, so allow a generous per-request read window before giving up.
+_TIMEOUT = 30
 
 
 def _url() -> str:
@@ -45,7 +48,7 @@ def _post_with_retry(url: str, headers: dict, body: dict) -> requests.Response:
     last_exc: Exception | None = None
     for attempt in range(_RETRY_ATTEMPTS):
         try:
-            resp = requests.post(url, headers=headers, json=body, timeout=15)
+            resp = requests.post(url, headers=headers, json=body, timeout=_TIMEOUT)
             return resp
         except (requests.exceptions.ConnectTimeout,
                 requests.exceptions.ReadTimeout,
