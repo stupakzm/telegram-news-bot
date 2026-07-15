@@ -19,6 +19,14 @@ _FETCH_TIMEOUT_SECONDS = 8
 _USER_AGENT = "newsbot/1.0 (+https://t.me/)"
 
 
+class FeedParseError(Exception):
+    """A feed fetched OK over HTTP but could not be parsed into any entries.
+
+    Raised so the caller records it in delivery_errors (feeding FEED-01's
+    health view) instead of silently dropping a dead feed.
+    """
+
+
 def _strip_html(raw: str) -> str:
     if not raw:
         return ""
@@ -72,6 +80,14 @@ def fetch_today_articles(feed_url: str, today_start_ts: int) -> list[dict]:
     resp.raise_for_status()
 
     parsed = feedparser.parse(resp.content)
+
+    # A feed that yields zero entries *and* reports a parse error (bozo) is
+    # broken (wrong URL, HTML page, malformed XML) rather than merely quiet.
+    # Surface it so it lands in delivery_errors and the /admin feed-health view.
+    if not parsed.entries and getattr(parsed, "bozo", 0):
+        exc = getattr(parsed, "bozo_exception", None)
+        raise FeedParseError(f"no entries; {type(exc).__name__ if exc else 'unparseable'}: {exc}")
+
     articles: list[dict] = []
 
     for entry in parsed.entries:

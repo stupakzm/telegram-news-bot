@@ -152,6 +152,39 @@ def test_unsafe_url_returns_empty(mock_validate):
 @patch("delivery.fetcher.feedparser.parse")
 @patch("delivery.fetcher.requests.get")
 @patch("delivery.fetcher.validate_rss_url", return_value=True)
+def test_broken_feed_raises_feed_parse_error(mock_validate, mock_get, mock_parse):
+    # 200 OK but unparseable: zero entries + bozo set -> raise so it's recorded
+    mock_get.return_value = _fake_resp(content=b"<html>not a feed</html>")
+    parsed = MagicMock()
+    parsed.entries = []
+    parsed.bozo = 1
+    parsed.bozo_exception = ValueError("mismatched tag")
+    mock_parse.return_value = parsed
+
+    from delivery.fetcher import fetch_today_articles, FeedParseError
+    import pytest
+    with pytest.raises(FeedParseError):
+        fetch_today_articles("https://feed.example/rss", 0)
+
+
+@patch("delivery.fetcher.feedparser.parse")
+@patch("delivery.fetcher.requests.get")
+@patch("delivery.fetcher.validate_rss_url", return_value=True)
+def test_empty_but_clean_feed_returns_empty_without_raising(mock_validate, mock_get, mock_parse):
+    # a valid feed that simply has no entries today must NOT raise
+    mock_get.return_value = _fake_resp()
+    parsed = MagicMock()
+    parsed.entries = []
+    parsed.bozo = 0
+    mock_parse.return_value = parsed
+
+    from delivery.fetcher import fetch_today_articles
+    assert fetch_today_articles("https://feed.example/rss", 0) == []
+
+
+@patch("delivery.fetcher.feedparser.parse")
+@patch("delivery.fetcher.requests.get")
+@patch("delivery.fetcher.validate_rss_url", return_value=True)
 def test_strips_html_entities(mock_validate, mock_get, mock_parse):
     mock_get.return_value = _fake_resp()
     parsed = MagicMock()

@@ -31,25 +31,33 @@
 - [x] **FEAT-02**: Article messages include 👍/👎 reaction buttons; reactions stored per user per article
 - [x] **FEAT-03**: Delivery pipeline tracks sent/failed status per article per user
 
-## v2 Requirements
+## v2 Requirements — Reliability & Quality
 
-### Delivery Improvements
+> Architecture note: v2 targets the **current per-user pipeline** (feeds +
+> keywords + in-code scoring, no shared cache). Old v2 items that assumed the
+> retired themes/quarter-cache model (e.g. "cache invalidation on theme edit")
+> have been dropped.
 
-- **DEL-01**: Async Telegram posting with rate-limit semaphore (replace 0.1s sleep loop)
-- **DEL-02**: Batch DB queries during delivery run (eliminate per-theme round trips)
-- **DEL-03**: Cache invalidation on theme edit (clear stale quarter cache)
+### Phase 4A — Harden now *(done 2026-07-15)*
 
-### AI Improvements
+- [x] **AI-03**: Prompt-injection hardening — user-supplied text wrapped in explicit untrusted-data markers, length-capped, forged markers stripped; prompt instructs the model to treat fenced content as data, never as instructions.
+- [x] **AI-02**: AI provider resilience — per-provider retry with exponential backoff + jitter and a process-wide circuit breaker skipping a known-down provider for the rest of the run. *(Dynamic Gemini model resolution deferred to the 4A review — hard-pins retained for now.)*
+- [x] **FEED-01**: Feed-health signal — unparseable/zero-entry feeds now raise and are recorded in `delivery_errors`; per-feed 7-day aggregation surfaced in `/admin`; `feedparser` bumped 6.0.11 → 6.0.12.
 
-- **AI-01**: Dynamic Gemini model selection (fetch available models at startup)
-- **AI-02**: Exponential backoff + circuit breaker for AI provider timeouts
-- **AI-03**: Input sanitization to prevent prompt injection from user-supplied text
+### Phase 4B — Concurrency *(plan-first, not started)*
 
-### Infrastructure
+- [ ] **DEL-01**: Concurrent/async delivery — bounded concurrency + Telegram rate-limit semaphore replaces the blocking sleep loop; per-user isolation so one slow provider can't stall the run.
+
+### Phase 5 — Product Quality *(plan-first, not started)*
+
+- [ ] **DQ-01**: Digest quality — collapse cross-feed near-duplicate stories in a run; act on stored 👍/👎 reactions to bias future picks (reaction-driven personalization).
+- [ ] **UX-01**: Onboarding polish — new user reaches first useful digest in one step (starter pack + suggested keywords).
+
+### Deferred / opportunistic
 
 - **INF-01**: Startup env var validation (raise `RuntimeError` if required keys missing)
 - **INF-02**: Structured JSON log format for production log aggregation
-- **INF-03**: Dead-letter handling for failed webhook updates
+- **DEL-02**: Batch per-user DB queries during delivery run
 
 ## Out of Scope
 
@@ -88,4 +96,4 @@
 
 ---
 *Requirements defined: 2026-03-21*
-*Last updated: 2026-03-22 after phase 1 plan 02 execution*
+*Last updated: 2026-07-15 — v2 (Reliability & Quality) requirements aligned to the per-user architecture.*

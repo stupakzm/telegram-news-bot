@@ -1,85 +1,68 @@
 # Roadmap: Telegram News Bot
 
-**Milestone:** v1.0 — Stable & Featured
-**Created:** 2026-03-21
+**Current milestone:** v2 — Reliability & Quality
+**Updated:** 2026-07-15
 
 ---
 
-## Phase 1 — Bug Fixes & Security
+## v1 — Stable & Featured ✅ (complete, 2026-03)
 
-**Goal:** Eliminate all known bugs and close critical security gaps. Make the bot safe and reliable for existing users before adding anything new.
+Shipped across three phases; full detail in `.planning/phases/01…03` and
+`REQUIREMENTS.md`.
 
-**Requirements:** BUG-01, BUG-02, BUG-03, BUG-04, BUG-05, BUG-06, SAFE-02
+| Phase | Name | Outcome |
+|-------|------|---------|
+| 1 | Bug Fixes & Security | Race-free inserts, payment parsing, webhook secret, RSS SSRF guard |
+| 2 | Observability & Rate Limiting | Structured logging, per-feed failure logs, per-user rate limiting |
+| 3 | New Features | `/admin` dashboard, 👍/👎 reactions, per-article delivery tracking |
 
-**Plans:** 2 plans
-
-Plans:
-- [x] 01-01-PLAN.md — Fix race condition, Gemini fallback, payment parsing, feed logging (BUG-01, BUG-02, BUG-03, BUG-04)
-- [x] 01-02-PLAN.md — Webhook secret verification and RSS SSRF mitigation (BUG-05, BUG-06, SAFE-02)
-
-**Deliverables:**
-- `RETURNING id` in custom theme INSERT (eliminates race condition)
-- Correct Gemini fallback model name verified and updated
-- Payment payload parsing hardened (safe split + validation)
-- Broken RSS feeds logged at warning level with URL + exception
-- Webhook secret token header verified; 403 on mismatch
-- RSS URL SSRF mitigation (private IP block + scheme validation)
-
-**Done when:** All 6 bugs fixed, tests pass, no regressions.
+Plus post-v1 hardening (2026-07): Turso cold-start retry, curated-pack dead-feed
+replacement, UX pass (command menu, `/help`, clickable titles, gentler empty
+states), `pre_checkout_query` fix.
 
 ---
 
-## Phase 2 — Observability & Rate Limiting
+## v2 — Reliability & Quality
 
-**Goal:** Make production issues diagnosable and protect the bot from abuse.
+**Goal:** Make the hourly delivery run robust under provider slowness and abuse,
+and raise the quality/personalization of what lands in each user's chat.
 
-**Requirements:** OBS-01, OBS-02, OBS-03, SAFE-01
+### Phase 4 — Delivery Robustness *(in progress)*
 
-**Plans:** 3/3 plans complete
+Order of execution reflects risk-reduction first, then a review checkpoint.
 
-Plans:
-- [x] 02-01-PLAN.md — Centralized logging config, print()-to-logger migration, test patch fixes (OBS-01, OBS-03)
-- [x] 02-02-PLAN.md — Delivery structured logs per-theme and run summary (OBS-02)
-- [x] 02-03-PLAN.md — Per-user command rate limiter with sliding window (SAFE-01)
+**4A — Harden now** *(done 2026-07-15)*
+- [x] **AI-03** — Prompt-injection hardening: article text fenced in `<<<ARTICLES_JSON_UNTRUSTED>>>…<<<END>>>` markers, title/body length-capped, forged markers stripped, model instructed to treat fenced content as data only. (`delivery/ai.py`, `tests/test_ai.py`)
+- [x] **AI-02** — AI provider resilience: per-provider retry with exponential backoff + jitter (`_call_with_retry`) and a process-wide circuit breaker (`_circuit_open_until`, 300s cooldown) so a failed provider is skipped for the rest of the hourly run. (`delivery/ai.py`, `tests/test_ai.py`)
+  - ↪ *Deferred sub-part:* dynamic Gemini model resolution (drop the hard-pinned names) — intentionally held for the 4A review as the riskier, network-dependent piece; hard-pins retained for now.
+- [x] **FEED-01** — Feed-health signal: broken feeds (200 OK but unparseable/zero-entry) now raise `FeedParseError` → recorded in `delivery_errors`; `delivery/feed_health.py` aggregates worst-offending feeds (7d) and `/admin` shows them. `feedparser` bumped 6.0.11 → 6.0.12. (`delivery/fetcher.py`, `delivery/feed_health.py`, `bot/commands/admin.py`, tests)
 
-**Deliverables:**
-- Structured logging throughout (replace `print()` / bare `logging.warning()`)
-- Delivery runs emit per-theme structured log entries
-- Per-user command rate limiting (5 commands/minute)
+  **⏸ PAUSE for review after 4A — reached.**
 
-**Done when:** Logs are structured and queryable; rate limit returns friendly message; delivery run logs show clear per-theme status.
+**4B — Concurrency** *(plan-first, not started)*
+- [ ] **DEL-01** — Concurrent/async delivery: replace the blocking per-article `sleep` loop and sequential per-user processing with bounded concurrency + a Telegram rate-limit semaphore, isolating users so one slow AI call or large batch can't stall the whole run. **Write a plan before implementing.**
 
----
+### Phase 5 — Product Quality *(plan-first, not started)*
 
-## Phase 3 — New Features
-
-**Goal:** Add the most-wanted capabilities: admin visibility, user feedback on articles, and delivery tracking.
-
-**Requirements:** FEAT-01, FEAT-02, FEAT-03
-
-**Plans:** 1/2 plans executed
-
-Plans:
-- [x] 03-01-PLAN.md — Database schema (3 new tables) and delivery tracking pipeline inserts (FEAT-03)
-- [ ] 03-02-PLAN.md — Reaction buttons on articles and /admin command (FEAT-01, FEAT-02)
-
-**Deliverables:**
-- `/admin` command (owner-only): active users, deliveries/hour, recent errors, payment revenue
-- Reaction buttons on delivered articles; reactions stored per user per article
-- Delivery pipeline tracks sent/failed status per article per user in DB
-
-**Done when:** Admin can see bot health at a glance; users can react to articles; delivery failures are recorded and queryable.
+- [ ] **DQ-01** — Digest quality: collapse cross-feed near-duplicate stories in a run; start acting on the already-stored 👍/👎 reactions to bias future picks (reaction-driven personalization). **Write a plan before implementing.**
+- [ ] **UX-01** — Onboarding polish: get a brand-new user to their first useful digest in a single step (starter pack + suggested keywords), reducing the empty feeds/keywords cold start. **Write a plan before implementing.**
 
 ---
+
+## Execution Notes
+
+- **4A** ships in this iteration, then we stop for review before touching concurrency.
+- **DEL-01, DQ-01, UX-01** are explicitly plan-first: produce a phase plan
+  (approach, files, tests, risks) and get sign-off before writing code.
 
 ## Phase Summary
 
-| Phase | Name | Requirements | Status |
-|-------|------|-------------|--------|
-| 1 | Bug Fixes & Security | BUG-01-06, SAFE-02 | Complete (2/2) |
-| 2 | Observability & Rate Limiting | OBS-01-03, SAFE-01 | Complete (3/3) |
-| 3 | 1/2 | In Progress|  |
+| Phase | Name | Status |
+|-------|------|--------|
+| 1–3 | v1 (bugs, observability, features) | Complete |
+| 4A | AI hardening + feed health | In progress |
+| 4B | Async delivery (DEL-01) | Planned (plan-first) |
+| 5 | Digest quality + onboarding | Planned (plan-first) |
 
 ---
-*Roadmap created: 2026-03-21*
-*Last updated: 2026-03-25 after phase 3 planning*
+*v1 roadmap created 2026-03-21; v2 opened 2026-07-15.*

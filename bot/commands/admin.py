@@ -3,6 +3,7 @@ import time
 import logging
 import db.client as db
 import bot.telegram as tg
+from delivery.feed_health import feed_health_report, format_feed_health
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +50,14 @@ def _build_status_text() -> str:
     else:
         error_lines = ["None"]
 
+    # Feed-health signal (FEED-01): worst-offending feeds over the last 7 days
+    try:
+        health_rows = feed_health_report(now_ts=now_ts)
+        health_lines = format_feed_health(health_rows, now_ts=now_ts)
+    except Exception as e:  # never let the health query break the whole panel
+        logger.warning("feed_health_report failed: %s", e)
+        health_lines = ["_unavailable_"]
+
     refreshed_at = time.strftime("%H:%M:%S UTC", time.gmtime(now_ts))
     return (
         f"\U0001f916 *Bot Status*\n\n"
@@ -56,6 +65,7 @@ def _build_status_text() -> str:
         f"\u26a1 *Deliveries (last hour):* {sent_hour} sent"
         + (f", {failed_hour} failed" if failed_hour else "") + "\n"
         f"\U0001f4b0 *Revenue (total Stars):* {revenue:,}\n\n"
+        f"\U0001f4e1 *Feed health (7d, worst):*\n" + "\n".join(health_lines) + "\n\n"
         f"\u26a0\ufe0f *Recent errors:*\n" + "\n".join(error_lines) +
         f"\n\n_Updated: {refreshed_at}_"
     )

@@ -1,5 +1,13 @@
 # Codebase Concerns
 
+> ⚠️ **Partly superseded (2026-07-15).** This is a 2026-03 audit of the retired
+> **themes/shared-cache** model. Many items are fixed (webhook secret, SSRF
+> guard, rate limiting, structured logging, delivery tracking, Turso retry) and
+> some no longer apply (theme cache invalidation). Still-live risks are tracked
+> in `ROADMAP.md` v2: AI retry/circuit-breaker (AI-02), prompt injection
+> (AI-03), feed health (FEED-01), async delivery (DEL-01). Note: `feedparser` is
+> maintained — latest is 6.0.12, not an abandoned 2021 release.
+
 **Analysis Date:** 2026-03-21
 
 ## Tech Debt
