@@ -9,6 +9,28 @@ _MAX_KEYWORD_LEN = 64
 _MAX_KEYWORDS = 50
 _SPLIT_RE = re.compile(r"[\n,]+")
 
+# Generic starter keywords offered as one-tap buttons during onboarding (UX-01).
+# Kept short and colon-free so they fit Telegram's 64-byte callback_data limit.
+SUGGESTED_KEYWORDS = [
+    "AI", "security", "startup", "privacy",
+    "open source", "GPU", "crypto", "cloud",
+]
+
+
+def suggested_keywords_markup() -> dict:
+    """Inline keyboard of tappable starter keywords + a 'type my own' fallback."""
+    rows: list[list[dict]] = []
+    pair: list[dict] = []
+    for kw in SUGGESTED_KEYWORDS:
+        pair.append({"text": f"➕ {kw}", "callback_data": f"kw:sugg:{kw}"})
+        if len(pair) == 2:
+            rows.append(pair)
+            pair = []
+    if pair:
+        rows.append(pair)
+    rows.append([{"text": "⌨️ Type my own", "callback_data": "kw:add"}])
+    return {"inline_keyboard": rows}
+
 
 def _list_keywords(user_id: int) -> list[str]:
     rows = db.execute(
@@ -76,6 +98,29 @@ def handle_add_callback(callback_query: dict) -> None:
         db.track_bot_message(user_id, result["message_id"])
 
 
+def handle_suggest_callback(callback_query: dict, keyword: str) -> None:
+    """Add a single suggested keyword in one tap (UX-01)."""
+    user_id = callback_query["from"]["id"]
+    keyword = keyword.strip()[:_MAX_KEYWORD_LEN]
+    if not keyword:
+        tg.answer_callback_query(callback_query["id"])
+        return
+
+    existing = set(_list_keywords(user_id))
+    if keyword in existing:
+        tg.answer_callback_query(callback_query["id"], text=f"Already added: {keyword}")
+        return
+    if len(existing) >= _MAX_KEYWORDS:
+        tg.answer_callback_query(callback_query["id"], text=f"Max {_MAX_KEYWORDS} keywords reached.")
+        return
+
+    db.execute_many([(
+        "INSERT OR IGNORE INTO user_keywords (user_id, keyword, added_at) VALUES (?, ?, ?)",
+        [user_id, keyword, int(time.time())],
+    )])
+    tg.answer_callback_query(callback_query["id"], text=f"✅ Added: {keyword}")
+
+
 def handle_remove_callback(callback_query: dict, index: int) -> None:
     user_id = callback_query["from"]["id"]
     msg = callback_query.get("message", {})
@@ -139,18 +184,17 @@ def handle_pending(message: dict, action: str, data_json: str) -> None:
 
     db.execute_many([("DELETE FROM user_pending_actions WHERE user_id = ?", [user_id])])
 
-    lines = [f"✅ Added {len(added)} keyword(s)."]
+    summary = [f"✅ Added {len(added)} keyword(s)."]
     if skipped:
         if total + len(added) >= _MAX_KEYWORDS:
-            lines.append(f"⚠️ {len(skipped)} skipped (max {_MAX_KEYWORDS} keywords).")
+            summary.append(f"⚠️ {len(skipped)} skipped (max {_MAX_KEYWORDS} keywords).")
         else:
-            lines.append(f"⚠️ {len(skipped)} skipped (already present).")
+            summary.append(f"⚠️ {len(skipped)} skipped (already present).")
 
-    result = tg.send_message(chat_id=chat_id, text="\n".join(lines))
-    if result.get("message_id"):
-        db.track_bot_message(user_id, result["message_id"])
-
-    text, markup = _build_view(user_id)
-    result = tg.send_message(chat_id=chat_id, text=text, reply_markup=markup)
+    # One message: the outcome summary as a header on the refreshed list view
+    # (avoids a separate summary message that duplicates the count).
+    view_text, markup = _build_view(user_id)
+    combined = "\n".join(summary) + "\n\n" + view_text
+    result = tg.send_message(chat_id=chat_id, text=combined, reply_markup=markup)
     if result.get("message_id"):
         db.track_bot_message(user_id, result["message_id"])

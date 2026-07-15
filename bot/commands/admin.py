@@ -4,6 +4,7 @@ import logging
 import db.client as db
 import bot.telegram as tg
 from delivery.feed_health import feed_health_report, format_feed_health
+from delivery.personalize import reaction_totals
 
 logger = logging.getLogger(__name__)
 
@@ -58,13 +59,22 @@ def _build_status_text() -> str:
         logger.warning("feed_health_report failed: %s", e)
         health_lines = ["_unavailable_"]
 
+    # Reaction totals (30d) — DQ-01 observability
+    try:
+        ups, downs = reaction_totals(now_ts - 30 * 24 * 3600)
+        reaction_line = f"\U0001f44d {ups}  \U0001f44e {downs}"
+    except Exception as e:
+        logger.warning("reaction_totals failed: %s", e)
+        reaction_line = "_unavailable_"
+
     refreshed_at = time.strftime("%H:%M:%S UTC", time.gmtime(now_ts))
     return (
         f"\U0001f916 *Bot Status*\n\n"
         f"\U0001f4ca *Active users (7d):* {active_users}\n"
         f"\u26a1 *Deliveries (last hour):* {sent_hour} sent"
         + (f", {failed_hour} failed" if failed_hour else "") + "\n"
-        f"\U0001f4b0 *Revenue (total Stars):* {revenue:,}\n\n"
+        f"\U0001f4b0 *Revenue (total Stars):* {revenue:,}\n"
+        f"\U0001f501 *Reactions (30d):* {reaction_line}\n\n"
         f"\U0001f4e1 *Feed health (7d, worst):*\n" + "\n".join(health_lines) + "\n\n"
         f"\u26a0\ufe0f *Recent errors:*\n" + "\n".join(error_lines) +
         f"\n\n_Updated: {refreshed_at}_"

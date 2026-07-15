@@ -182,17 +182,15 @@ def handle_pending(message: dict, action: str, data_json: str) -> None:
 
     db.execute_many([("DELETE FROM user_pending_actions WHERE user_id = ?", [user_id])])
 
-    lines = [f"✅ Added {len(added)} feed(s)."]
+    summary = [f"✅ Added {len(added)} feed(s)."]
     if duplicates:
-        lines.append(f"⚠️ {len(duplicates)} duplicate(s) skipped.")
+        summary.append(f"⚠️ {len(duplicates)} duplicate(s) skipped.")
     for url, reason in failed:
-        lines.append(f"❌ `{url[:60]}` — {reason}")
+        summary.append(f"❌ `{url[:60]}` — {reason}")
 
-    result = tg.send_message(chat_id=chat_id, text="\n".join(lines))
-    if result.get("message_id"):
-        db.track_bot_message(user_id, result["message_id"])
-
-    text, markup = _build_view(user_id)
-    result = tg.send_message(chat_id=chat_id, text=text, reply_markup=markup)
+    # One message: outcome summary as a header on the refreshed feed list view.
+    view_text, markup = _build_view(user_id)
+    combined = "\n".join(summary) + "\n\n" + view_text
+    result = tg.send_message(chat_id=chat_id, text=combined, reply_markup=markup)
     if result.get("message_id"):
         db.track_bot_message(user_id, result["message_id"])

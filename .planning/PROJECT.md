@@ -108,17 +108,21 @@ validation (`bot/validation.py`), per-user command rate limiting
 - ✓ Dead-feed replacement across curated URL packs
 - ✓ UX: command menu, `/help`, clickable titles, gentler empty states
 
-### Active — v2 (Reliability & Quality)
+**v2 — Reliability & Quality** *(2026-07-15, all shipped)*
+- ✓ **AI-03** Prompt-injection hardening — feed text fenced as untrusted data, length-capped, forged markers stripped (`delivery/ai.py`)
+- ✓ **AI-02** AI resilience — per-provider retry + backoff + jitter, process-wide circuit breaker (`delivery/ai.py`). *Dynamic model resolution deferred.*
+- ✓ **FEED-01** Feed-health signal — broken feeds raise `FeedParseError` → `delivery_errors`; worst feeds (7d) in `/admin`; feedparser 6.0.12 (`delivery/feed_health.py`)
+- ✓ **DEL-01** Delivery concurrency correct + tunable — process-wide Telegram token-bucket limiter (default 25 msg/s), per-thread sleeps removed, circuit breaker lock, concurrent per-user feed fetch, env-configurable workers (`delivery/ratelimit.py`, `delivery/main.py`)
+- ✓ **DQ-01** Reaction-driven personalization — last-30d net 👍/👎 gently adjusts each feed's per-run pick quota + ordering; reaction totals in `/admin` (`delivery/personalize.py`). *(Cross-feed dedup already handled at insertion time.)*
+- ✓ **UX-01** Onboarding — one-tap generic starter keywords (`kw:sugg:`) after pack import/skip
+- ✓ **Command-flow hardening** — stale/abandoned `user_pending_actions` no longer swallow the next message (1h TTL + cleared on any command); add-flows send one combined message instead of two; reaction toast only claims "Noted" when actually stored
 
-See `ROADMAP.md` for phasing. In-flight now:
-- **AI-03** — Prompt-injection hardening (user text treated as data, delimited, length-capped)
-- **AI-02** — AI provider retry + backoff + circuit breaker; dynamic model resolution
-- **FEED-01** — Feed-health signal (per-feed failure/empty aggregation surfaced to `/admin`) + feedparser bump
+### Known issues / next candidates
 
-Planned (plan-first, not started):
-- **DEL-01** — Concurrent/async delivery (remove blocking sleep loop; per-user isolation so one slow provider can't stall the run)
-- **DQ-01** — Digest quality: cross-feed near-duplicate collapse + reaction-driven personalization (act on stored 👍/👎)
-- **UX-01** — Onboarding polish: get a new user to first useful digest in one step
+- `/keywords` and `/addurl` lack the "Please /start first" guard that `/plan`, `/settings`, `/timezone` have → using them before `/start` can create orphan rows (no `users` row). Low frequency; fix = add the guard to those two `handle()` entrypoints.
+- `_handle_reaction` matches the reaction button against only the last 200 `delivery_log` rows; a reaction on an older article silently isn't stored.
+- Dynamic Gemini model resolution (deferred half of AI-02) — drop hard-pinned model names once validated.
+- No full delivery E2E test; no error-tracking service (Sentry).
 
 ### Out of Scope
 
@@ -154,9 +158,9 @@ Planned (plan-first, not started):
 
 - Deployed on Vercel (webhook) + GitHub Actions (hourly cron) + Turso (SQLite over HTTP)
 - No error-tracking service (Sentry etc.) — logs to stdout / GitHub Actions logs
-- Test suite: 120+ tests across bot commands, router, fetcher, scoring, scheduler, rate limiter, payments, webhook. Known gap: no full delivery E2E; one router test makes a live Turso call and times out offline.
+- Test suite: **166 passing** across bot commands, router, fetcher, scoring, scheduler, rate limiter, payments, AI, ratelimit, personalize, feed-health, webhook. Known gap: no full delivery E2E; one router test (`test_router_ignores_unknown_command`) makes a live Turso call and times out offline (deselect it when running offline).
 - `.venv` in repo is built for a python3.11 that is no longer on this host; recreate against 3.13 (external drive lacks symlink support — build the venv on a native fs).
 
 ---
 
-*Last updated: 2026-07-15 — refreshed to current per-user architecture; v2 reliability/quality roadmap opened.*
+*This file is the single source of current project state. Last updated: 2026-07-15 — v2 (Reliability & Quality) complete: AI-02/03, FEED-01, DEL-01, DQ-01, UX-01, and command-flow hardening all shipped.*

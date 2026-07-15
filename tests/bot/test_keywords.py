@@ -111,3 +111,37 @@ def test_remove_callback_deletes_keyword(mock_exec, mock_exec_many, mock_edit, m
     sql, args = mock_exec_many.call_args[0][0][0]
     assert "DELETE FROM user_keywords" in sql
     assert args[1] == "Tesla"
+
+
+# --- UX-01: one-tap suggested keywords ---------------------------------------
+
+def test_suggested_keywords_markup_has_buttons_and_typeown():
+    from bot.commands.keywords import suggested_keywords_markup, SUGGESTED_KEYWORDS
+    markup = suggested_keywords_markup()
+    flat = [b for row in markup["inline_keyboard"] for b in row]
+    datas = [b["callback_data"] for b in flat]
+    for kw in SUGGESTED_KEYWORDS:
+        assert f"kw:sugg:{kw}" in datas
+    assert "kw:add" in datas  # 'type my own' fallback
+
+
+@patch("bot.commands.keywords.tg.answer_callback_query")
+@patch("bot.commands.keywords.db.execute_many")
+@patch("bot.commands.keywords.db.execute", return_value=[])
+def test_suggest_callback_adds_keyword(mock_exec, mock_exec_many, mock_ack):
+    from bot.commands.keywords import handle_suggest_callback
+    handle_suggest_callback(_cb("kw:sugg:AI"), "AI")
+    sql, args = mock_exec_many.call_args[0][0][0]
+    assert "INSERT OR IGNORE INTO user_keywords" in sql
+    assert "AI" in args
+    assert mock_ack.called
+
+
+@patch("bot.commands.keywords.tg.answer_callback_query")
+@patch("bot.commands.keywords.db.execute_many")
+@patch("bot.commands.keywords.db.execute", return_value=[{"keyword": "AI"}])
+def test_suggest_callback_skips_duplicate(mock_exec, mock_exec_many, mock_ack):
+    from bot.commands.keywords import handle_suggest_callback
+    handle_suggest_callback(_cb("kw:sugg:AI"), "AI")
+    assert not mock_exec_many.called
+    assert "Already added" in mock_ack.call_args[1].get("text", "")

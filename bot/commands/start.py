@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 
 import db.client as db
 import bot.telegram as tg
+from bot.commands import keywords
 
 TRIAL_DURATION_SECONDS = 3 * 24 * 3600
 
@@ -144,14 +145,14 @@ def handle_pack_callback(callback_query: dict, pack_id: int) -> None:
 
     text = (
         f"✅ Imported *{count}* feed(s) from *{pack_name}*.\n\n"
-        "Next steps:\n"
-        "• /keywords — add filter words (deliveries need at least one)\n"
-        "• /timezone — set your local timezone\n"
-        "• /addurl — add more RSS feeds\n"
-        "• /settings — see everything\n"
+        "One quick step: add a keyword or two so I only send you articles that "
+        "match — tap a suggestion below or type your own.\n\n"
+        "_Then_ /timezone to set delivery hours, /settings to see everything."
     )
     tg.answer_callback_query(callback_query["id"], text=f"Imported {count} feed(s).")
-    result = tg.send_message(chat_id=chat_id, text=text)
+    result = tg.send_message(
+        chat_id=chat_id, text=text, reply_markup=keywords.suggested_keywords_markup()
+    )
     if result.get("message_id"):
         db.track_bot_message(user_id, result["message_id"])
 
@@ -163,11 +164,13 @@ def handle_skip_callback(callback_query: dict) -> None:
 
     text = (
         "OK — starting from scratch.\n\n"
-        "• /addurl — add an RSS feed URL\n"
-        "• /keywords — add filter words (required for deliveries)\n"
-        "• /timezone — set your local timezone\n"
+        "First add an RSS feed with /addurl. You can also pick a few keywords now "
+        "(tap below or type your own) so deliveries are filtered to what matters:\n\n"
+        "_Then_ /timezone to set delivery hours."
     )
     tg.answer_callback_query(callback_query["id"])
-    result = tg.send_message(chat_id=chat_id, text=text)
+    result = tg.send_message(
+        chat_id=chat_id, text=text, reply_markup=keywords.suggested_keywords_markup()
+    )
     if result.get("message_id"):
         db.track_bot_message(user_id, result["message_id"])

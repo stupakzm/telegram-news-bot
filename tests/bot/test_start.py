@@ -100,4 +100,8 @@ def test_skip_callback_sends_next_steps(mock_ack, mock_send):
     from bot.commands.start import handle_skip_callback
     handle_skip_callback(_cb("start:skip"))
     text = mock_send.call_args[1].get("text", "")
-    assert "/addurl" in text and "/keywords" in text
+    markup = mock_send.call_args[1].get("reply_markup", {})
+    # points to /addurl and offers one-tap keyword suggestions (UX-01)
+    assert "/addurl" in text
+    datas = [b["callback_data"] for row in markup["inline_keyboard"] for b in row]
+    assert any(d.startswith("kw:sugg:") for d in datas)

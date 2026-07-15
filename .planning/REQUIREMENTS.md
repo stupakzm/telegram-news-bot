@@ -48,10 +48,11 @@
 
 - [x] **DEL-01**: Delivery concurrency made correct + tunable. Users were already processed concurrently; added a process-wide token-bucket limiter (default 25 msg/s) that every Telegram send acquires from, removed the per-thread flood sleeps, locked the shared AI circuit breaker, parallelized per-user feed fetches, and made worker count + rate cap env-configurable. Threads, not asyncio.
 
-### Phase 5 — Product Quality *(plan-first, not started)*
+### Phase 5 — Product Quality *(done 2026-07-15)*
 
-- [ ] **DQ-01**: Digest quality — collapse cross-feed near-duplicate stories in a run; act on stored 👍/👎 reactions to bias future picks (reaction-driven personalization).
-- [ ] **UX-01**: Onboarding polish — new user reaches first useful digest in one step (starter pack + suggested keywords).
+- [x] **DQ-01**: Digest quality — cross-feed near-duplicate collapse was already handled at insertion time; added reaction-driven personalization: last-30d net 👍/👎 gently adjusts each feed's per-run pick quota and ordering (`delivery/personalize.py`), with reaction totals in `/admin`. Keyword scoring remains the primary signal.
+- [x] **UX-01**: Onboarding polish — after pack import/skip, one-tap generic starter keywords (`kw:sugg:` callback) + free-text fallback get a new user to a filtered digest without hand-composing keywords.
+- [x] **PAY-TESTS**: Closed the untested revenue path — `pre_checkout_query` ack and reaction handler now covered by router tests.
 
 ### Deferred / opportunistic
 

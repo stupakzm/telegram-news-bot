@@ -39,6 +39,11 @@ from delivery.fetcher import fetch_today_articles
 from delivery.scoring import score_article, format_relevance
 from delivery.ai import summarize_articles
 from delivery.poster import post_article
+from delivery.personalize import (
+    feed_reaction_bias,
+    select_with_bias,
+    REACTION_WINDOW_SECONDS,
+)
 
 # Concurrency defaults (overridable via env — see _max_user_workers).
 # Send pacing is handled globally by delivery.poster's token bucket, not by a
@@ -349,9 +354,10 @@ def _deliver_user(user: dict, now_utc: datetime) -> dict:
     for row in pool:
         by_feed.setdefault(row["feed_url"], []).append(row)
 
-    selected: list[dict] = []
-    for feed_url in feeds:
-        selected.extend(by_feed.get(feed_url, [])[:2])
+    # DQ-01: reactions gently adjust each feed's per-run quota (keywords/score
+    # remain the primary signal). No reactions -> default 2 per feed, feed order.
+    bias = feed_reaction_bias(user_id, now_ts - REACTION_WINDOW_SECONDS)
+    selected: list[dict] = select_with_bias(feeds, by_feed, bias)
 
     if not selected:
         _write_feed_errors(user_id, fetch_errors, now_ts)

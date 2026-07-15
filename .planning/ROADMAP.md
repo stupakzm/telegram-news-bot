@@ -1,6 +1,7 @@
 # Roadmap: Telegram News Bot
 
-**Current milestone:** v2 — Reliability & Quality
+**Current milestone:** v2 — Reliability & Quality — ✅ complete (2026-07-15)
+**Consolidated project state:** see `PROJECT.md` (single source of truth)
 **Updated:** 2026-07-15
 
 ---
@@ -42,10 +43,17 @@ Order of execution reflects risk-reduction first, then a review checkpoint.
 **4B — Concurrency** *(done 2026-07-15 — plan: `phases/04-delivery-robustness/04-01-PLAN.md`)*
 - [x] **DEL-01** — Delivery concurrency made correct + tunable. Key finding: the run was *already* concurrent (`ThreadPoolExecutor`, 5 workers) but the flood-pause was per-thread, so aggregate send rate could exceed Telegram's global cap. Fix: a process-wide token-bucket limiter (`delivery/ratelimit.py`) that every send acquires from (default 25 msg/s), removal of the per-thread sleeps, a lock around the shared AI circuit breaker, per-user concurrent feed fetches (W5), and env-configurable workers/rate cap with run metrics. Threads (not asyncio) to fit the sync codebase. Tests: `test_ratelimit.py`, `test_delivery_main.py`, circuit-breaker concurrency test.
 
-### Phase 5 — Product Quality *(plan-first, not started)*
+### Phase 5 — Product Quality *(done 2026-07-15)*
 
-- [ ] **DQ-01** — Digest quality: collapse cross-feed near-duplicate stories in a run; start acting on the already-stored 👍/👎 reactions to bias future picks (reaction-driven personalization). **Write a plan before implementing.**
-- [ ] **UX-01** — Onboarding polish: get a brand-new user to their first useful digest in a single step (starter pack + suggested keywords), reducing the empty feeds/keywords cold start. **Write a plan before implementing.**
+- [x] **DQ-01** — Digest quality. Cross-feed near-duplicate collapse was *already* handled (insertion-time `_titles_similar` dedup in `_deliver_user`). Added the missing half: reaction-driven personalization (`delivery/personalize.py`) — a gentle per-feed bias where a user's last-30d net 👍/👎 adjusts each feed's per-run pick quota (disliked feeds demoted to 1, liked promoted to 3, floor never 0) and orders liked feeds first; keyword scoring stays primary. Reaction totals (30d) surfaced in `/admin`.
+- [x] **UX-01** — Onboarding polish. After a pack import (or "skip"), the user is offered one-tap generic starter keywords (`kw:sugg:<word>` callback) plus a "type my own" fallback, so a new user reaches a filtered digest without manually composing keywords. (`bot/commands/keywords.py`, `start.py`, router.)
+- [x] **Payment coverage** — closed the untested revenue path: `pre_checkout_query` acknowledgement and the reaction handler now have router tests.
+
+### Command-flow hardening *(done 2026-07-15)*
+
+- [x] **Blocker fix** — abandoned/stale multi-step flows (`user_pending_actions`) no longer swallow the user's next unrelated message: 1h TTL + cleared whenever any command is issued.
+- [x] **Duplicate info** — keywords/addurl "add" completion now sends one combined message (summary as a header on the refreshed list) instead of two.
+- [x] **Correctness** — reaction toast only claims "Noted" when the article was actually matched and stored.
 
 ---
 
@@ -62,7 +70,7 @@ Order of execution reflects risk-reduction first, then a review checkpoint.
 | 1–3 | v1 (bugs, observability, features) | Complete |
 | 4A | AI hardening + feed health | Complete |
 | 4B | Concurrent delivery (DEL-01) | Complete |
-| 5 | Digest quality + onboarding | Planned (plan-first) |
+| 5 | Digest quality + onboarding | Complete |
 
 ---
 *v1 roadmap created 2026-03-21; v2 opened 2026-07-15.*

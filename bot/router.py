@@ -43,8 +43,11 @@ def _handle_reaction(callback_query: dict, reaction: str, url_key: str) -> None:
             "(user_id, article_url, reaction, reacted_at) VALUES (?, ?, ?, ?)",
             [user_id, article_url, reaction, int(time.time())],
         )])
-    emoji = "\U0001f44d" if reaction == "up" else "\U0001f44e"
-    tg.answer_callback_query(callback_query["id"], text=f"{emoji} Noted!")
+        emoji = "\U0001f44d" if reaction == "up" else "\U0001f44e"
+        tg.answer_callback_query(callback_query["id"], text=f"{emoji} Noted!")
+    else:
+        # Couldn't match the button to a delivered article — don't claim we saved it.
+        tg.answer_callback_query(callback_query["id"])
 
 
 def _handle_callback(callback_query: dict) -> None:
@@ -60,6 +63,10 @@ def _handle_callback(callback_query: dict) -> None:
 
     if data == "kw:add":
         keywords.handle_add_callback(callback_query)
+        return
+    if data.startswith("kw:sugg:"):
+        keyword = data.split(":", 2)[2]
+        keywords.handle_suggest_callback(callback_query, keyword)
         return
     if data.startswith("kw:rm:"):
         idx = int(data.split(":")[2])
@@ -101,12 +108,25 @@ def _handle_callback(callback_query: dict) -> None:
     tg.answer_callback_query(callback_query["id"])
 
 
+# Multi-step flows (add keywords/feed, custom timezone) are abandoned after this
+# long, so a message typed much later isn't mis-read as pending input.
+_PENDING_TTL_SECONDS = 3600
+
+
+def _clear_pending(user_id: int) -> None:
+    db.execute_many([("DELETE FROM user_pending_actions WHERE user_id = ?", [user_id])])
+
+
 def _handle_pending_action(message: dict) -> bool:
     user_id = message["from"]["id"]
     rows = db.execute(
-        "SELECT action, data FROM user_pending_actions WHERE user_id = ?", [user_id]
+        "SELECT action, data, created_at FROM user_pending_actions WHERE user_id = ?", [user_id]
     )
     if not rows:
+        return False
+    if int(time.time()) - (rows[0].get("created_at") or 0) > _PENDING_TTL_SECONDS:
+        # Stale flow — the user moved on. Drop it instead of consuming this text.
+        _clear_pending(user_id)
         return False
     action = rows[0]["action"]
     data_json = rows[0]["data"]
@@ -166,5 +186,8 @@ def handle_update(update: dict) -> None:
     command = text.split()[0].split("@")[0]
     entry = COMMAND_MAP.get(command)
     if entry:
+        # Issuing a command abandons any half-finished multi-step flow, so the
+        # next free-text message isn't mis-consumed as pending input.
+        _clear_pending(user_id)
         mod = importlib.import_module(entry[0])
         getattr(mod, entry[1])(message)
