@@ -18,6 +18,11 @@ def _escape_mdv2(text: str) -> str:
     return _MDV2_SPECIAL.sub(r"\\\1", text)
 
 
+def _escape_mdv2_url(url: str) -> str:
+    """Escape only the chars Telegram requires inside a MarkdownV2 link target."""
+    return url.replace("\\", "\\\\").replace(")", "\\)")
+
+
 def _url_key(url: str) -> str:
     """Short stable hash of the URL for use as Telegram callback_data."""
     return hashlib.md5(url.encode()).hexdigest()[:16]
@@ -56,11 +61,11 @@ def format_post(article: dict) -> str:
     in production since we filter score==0 upstream).
     """
     title = _escape_mdv2(article["title"])
+    url = _escape_mdv2_url(article["url"])
     summary = _escape_mdv2(article["summary"])
-    url = _escape_mdv2(article["url"])
 
     lines = [
-        f"\U0001f539 *{title}*",
+        f"\U0001f539 [*{title}*]({url})",
         "",
         summary,
     ]
@@ -68,7 +73,6 @@ def format_post(article: dict) -> str:
     if relevance:
         lines.append("")
         lines.append(f"\U0001f3af {_escape_mdv2(relevance)}")
-    lines.append(f"\U0001f517 {url}")
     return "\n".join(lines)
 
 

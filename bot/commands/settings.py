@@ -3,6 +3,8 @@ from datetime import datetime, timezone as _utc
 
 import db.client as db
 import bot.telegram as tg
+from bot.commands.addurl import _quota_for as _feed_quota
+from bot.commands.keywords import _MAX_KEYWORDS
 
 _TIER_LABEL = {"trial": "Trial (VIP)", "vip": "VIP", "svip": "SVIP", "expired": "Expired"}
 
@@ -49,8 +51,8 @@ def handle(message: dict) -> None:
         "⚙️ *Your Settings*\n\n"
         f"{plan_line}\n"
         f"*Timezone:* {tz}\n"
-        f"*Feeds:* {len(feeds)}\n"
-        f"*Keywords:* {len(keywords)}\n\n"
+        f"*Feeds:* {len(feeds)}/{_feed_quota(tier)}\n"
+        f"*Keywords:* {len(keywords)}/{_MAX_KEYWORDS}\n\n"
         "• /keywords — manage filter words\n"
         "• /addurl — manage RSS feeds\n"
         "• /timezone — set timezone\n"

@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 
 COMMAND_MAP = {
     "/start": ("bot.commands.start", "handle"),
+    "/help": ("bot.commands.help", "handle"),
     "/keywords": ("bot.commands.keywords", "handle"),
     "/addurl": ("bot.commands.addurl", "handle"),
     "/settings": ("bot.commands.settings", "handle"),

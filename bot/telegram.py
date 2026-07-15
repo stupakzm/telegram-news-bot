@@ -60,6 +60,17 @@ def answer_pre_checkout_query(pre_checkout_query_id: str, ok: bool,
     requests.post(_url("answerPreCheckoutQuery"), json=payload, timeout=10)
 
 
+def set_my_commands(commands: list[dict]) -> dict:
+    """Register the bot's command menu (the blue '/' list) with Telegram.
+
+    commands: list of {"command": "start", "description": "..."} dicts.
+    Idempotent — safe to call repeatedly (e.g. once per deploy).
+    """
+    resp = requests.post(_url("setMyCommands"), json={"commands": commands}, timeout=10)
+    resp.raise_for_status()
+    return resp.json().get("result", {})
+
+
 def send_invoice(chat_id: int, title: str, description: str, payload: str,
                  currency: str, prices: list[dict]) -> dict:
     """Send a Telegram Stars payment invoice. currency must be 'XTR' for Stars."""

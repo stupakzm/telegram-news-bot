@@ -11,10 +11,14 @@ users.
 """
 import json
 import logging
+import os
+import random
 import re
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
+
+import requests
 
 from dotenv import load_dotenv
 load_dotenv()  # ensure env is loaded before project imports that read os.environ at import time
@@ -38,6 +42,24 @@ from delivery.poster import post_article
 
 _MAX_USER_WORKERS = 5
 _TELEGRAM_FLOOD_PAUSE = 0.1
+
+# How many random fresh articles to send a user who has feeds but no keywords.
+_RANDOM_SAMPLE_SIZE = 3
+# Sentinel article_url marking a "nothing matched" note in delivery_log, used to
+# rate-limit the quiet-day note to once per user per local day.
+_QUIET_SENTINEL = "__quiet__"
+
+
+def _notify(user_id: int, text: str) -> None:
+    """Send a plain-text (no Markdown) system message to a user."""
+    try:
+        requests.post(
+            f"https://api.telegram.org/bot{os.environ['TELEGRAM_BOT_TOKEN']}/sendMessage",
+            json={"chat_id": user_id, "text": text, "disable_web_page_preview": True},
+            timeout=10,
+        )
+    except Exception as e:
+        logger.warning("notify failed user=%d: %s", user_id, e)
 
 # Jaccard word-overlap threshold for near-duplicate titles across feeds.
 _TITLE_SIMILARITY_THRESHOLD = 0.6
@@ -109,6 +131,120 @@ def _write_feed_errors(user_id: int, errors: list[tuple[str, str]], now_ts: int)
         logger.warning("Failed to write delivery_errors for %d: %s", user_id, e)
 
 
+def _maybe_quiet_note(user_id: int, today_start_ts: int, now_ts: int) -> None:
+    """Send a 'nothing matched' note at most once per user per local day.
+
+    Skipped if the user already received real articles today (they're not in a
+    silent day) or already got a quiet note earlier today.
+    """
+    already = db.execute(
+        "SELECT status FROM delivery_log "
+        "WHERE user_id = ? AND sent_at >= ? AND status IN ('sent', 'quiet') LIMIT 1",
+        [user_id, today_start_ts],
+    )
+    if already:
+        return
+    _notify(
+        user_id,
+        "📭 Nothing matched your keywords in this slot. I'll keep checking — "
+        "tweak them anytime with /keywords.",
+    )
+    try:
+        db.execute_many([(
+            "INSERT INTO delivery_log (user_id, article_url, status, sent_at) "
+            "VALUES (?, ?, 'quiet', ?)",
+            [user_id, _QUIET_SENTINEL, now_ts],
+        )])
+    except Exception as e:
+        logger.warning("Failed to record quiet note for %d: %s", user_id, e)
+
+
+def _deliver_random_no_keywords(user: dict, now_utc: datetime, feeds: list[str]) -> dict:
+    """Deliver a few random fresh articles to a user who has no keywords yet."""
+    user_id = user["user_id"]
+    tz = user["timezone"]
+    now_ts = int(now_utc.timestamp())
+    today_start_ts = user_today_start_utc_ts(tz, now_utc)
+
+    recent_sent = _recent_sent_urls(user_id, now_ts - 24 * 3600)
+    fetch_errors: list[tuple[str, str]] = []
+    candidates: list[dict] = []
+    seen: set[str] = set()
+
+    for feed_url in feeds:
+        try:
+            articles = fetch_today_articles(feed_url, today_start_ts)
+        except Exception as e:
+            fetch_errors.append((feed_url, f"{type(e).__name__}: {e}"))
+            continue
+        for article in articles:
+            url = article["url"]
+            if url in recent_sent or url in seen:
+                continue
+            seen.add(url)
+            candidates.append(article)
+
+    _write_feed_errors(user_id, fetch_errors, now_ts)
+
+    if not candidates:
+        logger.info("user=%d status=no_articles reason=no_keywords", user_id)
+        return {"user_id": user_id, "status": "no_articles", "sent": 0, "failed": 0}
+
+    picks = random.sample(candidates, min(_RANDOM_SAMPLE_SIZE, len(candidates)))
+    summaries = summarize_articles(picks)
+    summary_by_url = {s["url"]: s for s in summaries}
+
+    sent = 0
+    failed = 0
+    update_stmts: list[tuple] = []
+
+    for pick in picks:
+        ai = summary_by_url.get(pick["url"])
+        if not ai:
+            continue
+        article = {
+            "url": pick["url"],
+            "title": pick["title"],
+            "summary": ai.get("summary", ""),
+            "is_important": ai.get("is_important"),
+            "importance_detail": ai.get("importance_detail", ""),
+            "relevance": "",  # no keywords → no relevance line
+        }
+        try:
+            post_article(user_id=user_id, article=article)
+            sent += 1
+            update_stmts.append((
+                "INSERT INTO delivery_log (user_id, article_url, status, sent_at) "
+                "VALUES (?, ?, 'sent', ?)",
+                [user_id, pick["url"], now_ts],
+            ))
+            time.sleep(_TELEGRAM_FLOOD_PAUSE)
+        except Exception as e:
+            failed += 1
+            logger.error("post_article (random) failed user=%d url=%s err=%s", user_id, pick["url"], e)
+            update_stmts.append((
+                "INSERT INTO delivery_log (user_id, article_url, status, sent_at) "
+                "VALUES (?, ?, 'failed', ?)",
+                [user_id, pick["url"], now_ts],
+            ))
+
+    if update_stmts:
+        try:
+            db.execute_many(update_stmts)
+        except Exception as e:
+            logger.error("Failed to persist random delivery for %d: %s", user_id, e)
+
+    if sent:
+        _notify(
+            user_id,
+            "💡 These are random fresh picks from your feeds. Add keywords with "
+            "/keywords and I'll filter for the articles that actually matter to you.",
+        )
+
+    logger.info("user=%d status=random_no_keywords sent=%d failed=%d", user_id, sent, failed)
+    return {"user_id": user_id, "status": "ok", "sent": sent, "failed": failed}
+
+
 def _deliver_user(user: dict, now_utc: datetime) -> dict:
     user_id = user["user_id"]
     tz = user["timezone"]
@@ -117,12 +253,13 @@ def _deliver_user(user: dict, now_utc: datetime) -> dict:
 
     feeds = _load_feeds(user_id)
     keywords = _load_keywords(user_id)
-    if not feeds or not keywords:
-        logger.info(
-            "skip user=%d reason=no_config feeds=%d keywords=%d",
-            user_id, len(feeds), len(keywords),
-        )
+    if not feeds:
+        logger.info("skip user=%d reason=no_feeds", user_id)
         return {"user_id": user_id, "status": "no_config", "sent": 0, "failed": 0}
+    if not keywords:
+        # Has feeds but no keywords: send random fresh picks so the bot feels
+        # alive, then nudge them to add keywords for real relevance filtering.
+        return _deliver_random_no_keywords(user, now_utc, feeds)
 
     recent_sent = _recent_sent_urls(user_id, now_ts - 24 * 3600)
     seen_urls, seen_title_words = _existing_seen_urls_and_titles(user_id)
@@ -182,6 +319,7 @@ def _deliver_user(user: dict, now_utc: datetime) -> dict:
 
     if not selected:
         _write_feed_errors(user_id, fetch_errors, now_ts)
+        _maybe_quiet_note(user_id, today_start_ts, now_ts)
         logger.info(
             "user=%d feeds=%d keywords=%d new_seen=%d sent=0 status=no_matches",
             user_id, len(feeds), len(keywords), len(new_rows),

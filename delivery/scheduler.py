@@ -21,9 +21,42 @@ TIER_HOURS = {
 # Pool retention window — seen_articles older than this get pruned each run.
 SEEN_RETENTION_SECONDS = 24 * 3600
 
-# Renewal-reminder settings (paid plans only; trial users don't get nags).
+# Expiry-reminder settings. Paid plans get a 3-day heads-up to renew; trial
+# users get a single final-day nudge to pick a plan.
 EXPIRY_REMINDER_WINDOW = 3 * 24 * 3600
+TRIAL_REMINDER_WINDOW = 24 * 3600
 REMINDER_COOLDOWN = 24 * 3600
+
+
+def _owner_id() -> int | None:
+    """The owner's user_id, if configured — exempt from auto-expiry."""
+    raw = os.environ.get("OWNER_USER_ID")
+    try:
+        return int(raw) if raw else None
+    except ValueError:
+        return None
+
+
+def _notify_expiration(user_id: int, tier: str) -> None:
+    """Tell a user their plan just expired and deliveries have stopped."""
+    if tier == "trial":
+        text = (
+            "⌛ Your 3-day trial has ended, so daily digests have stopped.\n"
+            "Use /plan to pick a plan and resume deliveries."
+        )
+    else:
+        text = (
+            "⌛ Your plan has expired, so daily digests have stopped.\n"
+            "Use /plan to renew and resume deliveries."
+        )
+    try:
+        requests.post(
+            f"https://api.telegram.org/bot{os.environ['TELEGRAM_BOT_TOKEN']}/sendMessage",
+            json={"chat_id": user_id, "text": text},
+            timeout=10,
+        )
+    except Exception as e:
+        logger.warning("Failed to send expiration notice to %s: %s", user_id, e)
 
 
 def _user_local_hour(user_tz: str | None, now_utc: datetime) -> int:
@@ -47,12 +80,17 @@ def get_due_users(now_utc: datetime) -> list[dict]:
         "FROM users WHERE tier IN ('trial', 'vip', 'svip')"
     )
     now_ts = int(now_utc.timestamp())
+    owner_id = _owner_id()
     due: list[dict] = []
-    expired_ids: list[int] = []
+    expired: list[tuple[int, str]] = []  # (user_id, tier) for users just expired
 
     for row in rows:
-        if row["tier_expires_at"] and row["tier_expires_at"] < now_ts:
-            expired_ids.append(row["user_id"])
+        if (
+            row["tier_expires_at"]
+            and row["tier_expires_at"] < now_ts
+            and row["user_id"] != owner_id
+        ):
+            expired.append((row["user_id"], row["tier"]))
             continue
 
         hours = TIER_HOURS.get(row["tier"], ())
@@ -60,14 +98,16 @@ def get_due_users(now_utc: datetime) -> list[dict]:
         if local_hour in hours:
             due.append(row)
 
-    if expired_ids:
+    if expired:
         db.execute_many([
             (
                 "UPDATE users SET tier = 'expired', tier_expires_at = NULL WHERE user_id = ?",
                 [uid],
             )
-            for uid in expired_ids
+            for uid, _ in expired
         ])
+        for uid, tier in expired:
+            _notify_expiration(uid, tier)
 
     return due
 
@@ -91,9 +131,9 @@ def check_expiry_reminders() -> None:
     try:
         users = db.execute(
             """
-            SELECT user_id, tier_expires_at, last_reminder_at
+            SELECT user_id, tier, tier_expires_at, last_reminder_at
             FROM users
-            WHERE tier IN ('vip', 'svip')
+            WHERE tier IN ('trial', 'vip', 'svip')
               AND tier_expires_at IS NOT NULL
               AND tier_expires_at BETWEEN ? AND ?
               AND (last_reminder_at IS NULL OR last_reminder_at < ?)
@@ -108,11 +148,22 @@ def check_expiry_reminders() -> None:
 
     bot_token = os.environ["TELEGRAM_BOT_TOKEN"]
     for user in users:
+        seconds_left = user["tier_expires_at"] - now
+        # Trial spans only 3 days, so warn just once in its final day rather
+        # than nagging from day one.
+        if user["tier"] == "trial" and seconds_left > TRIAL_REMINDER_WINDOW:
+            continue
         days_left = max(1, (user["tier_expires_at"] - now + 86399) // 86400)
-        text = (
-            f"⏳ Your plan expires in {days_left} day(s). "
-            "Use /plan to renew and keep deliveries running."
-        )
+        if user["tier"] == "trial":
+            text = (
+                f"⏳ Your trial ends in {days_left} day(s). "
+                "Use /plan to pick a plan and keep deliveries running."
+            )
+        else:
+            text = (
+                f"⏳ Your plan expires in {days_left} day(s). "
+                "Use /plan to renew and keep deliveries running."
+            )
         try:
             requests.post(
                 f"https://api.telegram.org/bot{bot_token}/sendMessage",
