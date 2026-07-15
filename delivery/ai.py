@@ -17,6 +17,7 @@ import json
 import logging
 import os
 import random
+import threading
 import time
 
 import google.generativeai as genai
@@ -38,8 +39,10 @@ _RETRY_ATTEMPTS = 2           # total tries per provider (1 retry)
 _RETRY_BASE_DELAY = 0.5       # seconds; exponential: 0.5, 1.0, ... + jitter
 _CIRCUIT_COOLDOWN_SECONDS = 300  # a failed provider is skipped this long
 
-# provider name -> unix ts until which its circuit stays open (skip it)
+# provider name -> unix ts until which its circuit stays open (skip it).
+# Shared across delivery worker threads, so guard access with a lock.
 _circuit_open_until: dict[str, float] = {}
+_circuit_lock = threading.Lock()
 
 # Delimiter that fences the untrusted article payload. Chosen to be extremely
 # unlikely to appear in real article text so the model can trust the boundary.
@@ -150,19 +153,21 @@ def _call_groq(prompt: str) -> list[dict]:
 
 def _circuit_is_open(name: str, now: float | None = None) -> bool:
     now = time.time() if now is None else now
-    until = _circuit_open_until.get(name)
-    if until is None:
-        return False
-    if now >= until:
-        # cooldown elapsed — close the circuit and allow a retry
-        _circuit_open_until.pop(name, None)
-        return False
-    return True
+    with _circuit_lock:
+        until = _circuit_open_until.get(name)
+        if until is None:
+            return False
+        if now >= until:
+            # cooldown elapsed — close the circuit and allow a retry
+            _circuit_open_until.pop(name, None)
+            return False
+        return True
 
 
 def _trip_circuit(name: str, now: float | None = None) -> None:
     now = time.time() if now is None else now
-    _circuit_open_until[name] = now + _CIRCUIT_COOLDOWN_SECONDS
+    with _circuit_lock:
+        _circuit_open_until[name] = now + _CIRCUIT_COOLDOWN_SECONDS
 
 
 def _call_with_retry(name: str, fn):

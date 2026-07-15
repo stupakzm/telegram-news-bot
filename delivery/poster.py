@@ -6,9 +6,23 @@ import re
 
 import requests
 
+from delivery.ratelimit import TokenBucket
+
 logger = logging.getLogger(__name__)
 
 TELEGRAM_API = "https://api.telegram.org/bot{token}/{method}"
+
+
+def _rate_cap() -> float:
+    try:
+        return float(os.environ.get("TELEGRAM_MAX_MSGS_PER_SEC", "25"))
+    except ValueError:
+        return 25.0
+
+
+# Process-wide limiter shared by every delivery worker thread (DEL-01). Keeps the
+# aggregate send rate under Telegram's global ceiling no matter the worker count.
+_LIMITER = TokenBucket(_rate_cap())
 
 # MarkdownV2 reserved characters that must be escaped outside entities.
 _MDV2_SPECIAL = re.compile(r"([_*\[\]()~`>#+\-=|{}.!\\])")
@@ -49,6 +63,7 @@ def _send_message(
     if reply_markup:
         payload["reply_markup"] = reply_markup
 
+    _LIMITER.acquire()  # DEL-01: global rate limit across all worker threads
     resp = requests.post(_bot_url("sendMessage"), json=payload, timeout=30)
     resp.raise_for_status()
     return resp.json()["result"]

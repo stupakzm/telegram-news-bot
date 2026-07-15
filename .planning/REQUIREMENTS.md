@@ -44,9 +44,9 @@
 - [x] **AI-02**: AI provider resilience — per-provider retry with exponential backoff + jitter and a process-wide circuit breaker skipping a known-down provider for the rest of the run. *(Dynamic Gemini model resolution deferred to the 4A review — hard-pins retained for now.)*
 - [x] **FEED-01**: Feed-health signal — unparseable/zero-entry feeds now raise and are recorded in `delivery_errors`; per-feed 7-day aggregation surfaced in `/admin`; `feedparser` bumped 6.0.11 → 6.0.12.
 
-### Phase 4B — Concurrency *(plan-first, not started)*
+### Phase 4B — Concurrency *(done 2026-07-15)*
 
-- [ ] **DEL-01**: Concurrent/async delivery — bounded concurrency + Telegram rate-limit semaphore replaces the blocking sleep loop; per-user isolation so one slow provider can't stall the run.
+- [x] **DEL-01**: Delivery concurrency made correct + tunable. Users were already processed concurrently; added a process-wide token-bucket limiter (default 25 msg/s) that every Telegram send acquires from, removed the per-thread flood sleeps, locked the shared AI circuit breaker, parallelized per-user feed fetches, and made worker count + rate cap env-configurable. Threads, not asyncio.
 
 ### Phase 5 — Product Quality *(plan-first, not started)*
 

@@ -39,8 +39,8 @@ Order of execution reflects risk-reduction first, then a review checkpoint.
 
   **⏸ PAUSE for review after 4A — reached.**
 
-**4B — Concurrency** *(plan-first, not started)*
-- [ ] **DEL-01** — Concurrent/async delivery: replace the blocking per-article `sleep` loop and sequential per-user processing with bounded concurrency + a Telegram rate-limit semaphore, isolating users so one slow AI call or large batch can't stall the whole run. **Write a plan before implementing.**
+**4B — Concurrency** *(done 2026-07-15 — plan: `phases/04-delivery-robustness/04-01-PLAN.md`)*
+- [x] **DEL-01** — Delivery concurrency made correct + tunable. Key finding: the run was *already* concurrent (`ThreadPoolExecutor`, 5 workers) but the flood-pause was per-thread, so aggregate send rate could exceed Telegram's global cap. Fix: a process-wide token-bucket limiter (`delivery/ratelimit.py`) that every send acquires from (default 25 msg/s), removal of the per-thread sleeps, a lock around the shared AI circuit breaker, per-user concurrent feed fetches (W5), and env-configurable workers/rate cap with run metrics. Threads (not asyncio) to fit the sync codebase. Tests: `test_ratelimit.py`, `test_delivery_main.py`, circuit-breaker concurrency test.
 
 ### Phase 5 — Product Quality *(plan-first, not started)*
 
@@ -60,8 +60,8 @@ Order of execution reflects risk-reduction first, then a review checkpoint.
 | Phase | Name | Status |
 |-------|------|--------|
 | 1–3 | v1 (bugs, observability, features) | Complete |
-| 4A | AI hardening + feed health | In progress |
-| 4B | Async delivery (DEL-01) | Planned (plan-first) |
+| 4A | AI hardening + feed health | Complete |
+| 4B | Concurrent delivery (DEL-01) | Complete |
 | 5 | Digest quality + onboarding | Planned (plan-first) |
 
 ---

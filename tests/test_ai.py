@@ -1,5 +1,6 @@
 """Tests for delivery/ai.py — prompt hardening (AI-03) and provider
 resilience: retry/backoff + circuit breaker (AI-02)."""
+import threading
 import time
 
 import pytest
@@ -86,6 +87,33 @@ def test_circuit_opens_and_cooldown_closes():
     assert ai._circuit_is_open("Groq", now=now + 1) is True
     # after cooldown the circuit auto-closes
     assert ai._circuit_is_open("Groq", now=now + ai._CIRCUIT_COOLDOWN_SECONDS + 1) is False
+
+
+def test_circuit_breaker_is_thread_safe():
+    # Hammer the shared circuit state from many threads; must not raise and must
+    # leave every hammered provider tripped (DEL-01 W3).
+    names = [f"prov-{i}" for i in range(8)]
+    errors = []
+    barrier = threading.Barrier(len(names) * 2)
+
+    def tripper(name):
+        barrier.wait()
+        for _ in range(200):
+            try:
+                ai._trip_circuit(name)
+                ai._circuit_is_open(name)
+            except Exception as e:  # pragma: no cover
+                errors.append(e)
+
+    threads = [threading.Thread(target=tripper, args=(n,)) for n in names for _ in range(2)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=5)
+
+    assert not errors
+    for n in names:
+        assert ai._circuit_is_open(n) is True
 
 
 # --- AI-02: summarize_articles fallback + circuit integration -----------------

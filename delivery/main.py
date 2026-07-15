@@ -40,8 +40,11 @@ from delivery.scoring import score_article, format_relevance
 from delivery.ai import summarize_articles
 from delivery.poster import post_article
 
-_MAX_USER_WORKERS = 5
-_TELEGRAM_FLOOD_PAUSE = 0.1
+# Concurrency defaults (overridable via env — see _max_user_workers).
+# Send pacing is handled globally by delivery.poster's token bucket, not by a
+# per-thread sleep, so many workers can't collectively exceed Telegram's rate.
+_MAX_USER_WORKERS = 5          # concurrent users; env DELIVERY_MAX_WORKERS
+_FEED_FETCH_WORKERS = 4        # concurrent feed fetches per user; env DELIVERY_FEED_WORKERS
 
 # How many random fresh articles to send a user who has feeds but no keywords.
 _RANDOM_SAMPLE_SIZE = 3
@@ -115,6 +118,40 @@ def _existing_seen_urls_and_titles(user_id: int) -> tuple[set[str], list[set[str
     return urls, title_word_sets
 
 
+def _env_int(name: str, default: int) -> int:
+    try:
+        return max(1, int(os.environ.get(name, str(default))))
+    except (ValueError, TypeError):
+        return default
+
+
+def _max_user_workers() -> int:
+    return _env_int("DELIVERY_MAX_WORKERS", _MAX_USER_WORKERS)
+
+
+def _feed_fetch_workers() -> int:
+    return _env_int("DELIVERY_FEED_WORKERS", _FEED_FETCH_WORKERS)
+
+
+def _fetch_all(feeds: list[str], today_start_ts: int) -> dict[str, object]:
+    """Fetch every feed concurrently (W5).
+
+    Returns {feed_url: articles_list | Exception}. Fetching is I/O-bound and
+    independent per feed, so it parallelizes safely; the CALLER still processes
+    results sequentially in feed order to keep dedup/scoring deterministic.
+    """
+    workers = min(_feed_fetch_workers(), len(feeds)) or 1
+    results: dict[str, object] = {}
+    with ThreadPoolExecutor(max_workers=workers) as ex:
+        futures = {ex.submit(fetch_today_articles, url, today_start_ts): url for url in feeds}
+        for fut, url in futures.items():
+            try:
+                results[url] = fut.result()
+            except Exception as e:  # captured per-feed; caller records to delivery_errors
+                results[url] = e
+    return results
+
+
 def _write_feed_errors(user_id: int, errors: list[tuple[str, str]], now_ts: int) -> None:
     if not errors:
         return
@@ -171,13 +208,13 @@ def _deliver_random_no_keywords(user: dict, now_utc: datetime, feeds: list[str])
     candidates: list[dict] = []
     seen: set[str] = set()
 
+    fetched = _fetch_all(feeds, today_start_ts)
     for feed_url in feeds:
-        try:
-            articles = fetch_today_articles(feed_url, today_start_ts)
-        except Exception as e:
-            fetch_errors.append((feed_url, f"{type(e).__name__}: {e}"))
+        result = fetched[feed_url]
+        if isinstance(result, Exception):
+            fetch_errors.append((feed_url, f"{type(result).__name__}: {result}"))
             continue
-        for article in articles:
+        for article in result:
             url = article["url"]
             if url in recent_sent or url in seen:
                 continue
@@ -218,7 +255,6 @@ def _deliver_random_no_keywords(user: dict, now_utc: datetime, feeds: list[str])
                 "VALUES (?, ?, 'sent', ?)",
                 [user_id, pick["url"], now_ts],
             ))
-            time.sleep(_TELEGRAM_FLOOD_PAUSE)
         except Exception as e:
             failed += 1
             logger.error("post_article (random) failed user=%d url=%s err=%s", user_id, pick["url"], e)
@@ -267,14 +303,14 @@ def _deliver_user(user: dict, now_utc: datetime) -> dict:
     fetch_errors: list[tuple[str, str]] = []
     new_rows: list[tuple] = []
 
+    fetched = _fetch_all(feeds, today_start_ts)
     for feed_url in feeds:
-        try:
-            articles = fetch_today_articles(feed_url, today_start_ts)
-        except Exception as e:
-            fetch_errors.append((feed_url, f"{type(e).__name__}: {e}"))
+        result = fetched[feed_url]
+        if isinstance(result, Exception):
+            fetch_errors.append((feed_url, f"{type(result).__name__}: {result}"))
             continue
 
-        for article in articles:
+        for article in result:
             url = article["url"]
             if url in recent_sent or url in seen_urls:
                 continue
@@ -366,7 +402,6 @@ def _deliver_user(user: dict, now_utc: datetime) -> dict:
                 "VALUES (?, ?, 'sent', ?)",
                 [user_id, s["article_url"], now_ts],
             ))
-            time.sleep(_TELEGRAM_FLOOD_PAUSE)
         except Exception as e:
             failed += 1
             logger.error("post_article failed user=%d url=%s err=%s", user_id, s["article_url"], e)
@@ -410,7 +445,12 @@ def _deliver_safely(user: dict, now_utc: datetime) -> dict:
 def run() -> None:
     now_utc = datetime.now(timezone.utc)
     run_start = time.monotonic()
-    logger.info("run start hour_utc=%d", now_utc.hour)
+    workers = _max_user_workers()
+    msgs_cap = os.environ.get("TELEGRAM_MAX_MSGS_PER_SEC", "25")
+    logger.info(
+        "run start hour_utc=%d workers=%d feed_workers=%d msgs_per_sec_cap=%s",
+        now_utc.hour, workers, _feed_fetch_workers(), msgs_cap,
+    )
 
     due = get_due_users(now_utc)
     if not due:
@@ -421,7 +461,7 @@ def run() -> None:
 
     logger.info("processing %d due user(s)", len(due))
 
-    with ThreadPoolExecutor(max_workers=_MAX_USER_WORKERS) as executor:
+    with ThreadPoolExecutor(max_workers=workers) as executor:
         results = list(executor.map(lambda u: _deliver_safely(u, now_utc), due))
 
     sent_total = sum(r["sent"] for r in results)
@@ -429,8 +469,9 @@ def run() -> None:
     errors_total = sum(1 for r in results if r["status"] == "error")
     duration = time.monotonic() - run_start
     logger.info(
-        "run complete users=%d sent=%d failed=%d errors=%d duration=%.1fs",
-        len(due), sent_total, failed_total, errors_total, duration,
+        "run complete users=%d sent=%d failed=%d errors=%d duration=%.1fs "
+        "workers=%d msgs_per_sec_cap=%s",
+        len(due), sent_total, failed_total, errors_total, duration, workers, msgs_cap,
     )
 
     check_expiry_reminders()
