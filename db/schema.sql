@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS seen_articles (
     score           INTEGER NOT NULL,      -- total keyword occurrences across title+body
     match_breakdown TEXT    NOT NULL,      -- JSON object: {"Tesla":12,"Autopilot":8}
     fetched_at      INTEGER NOT NULL,
+    published_at    INTEGER NOT NULL DEFAULT 0,  -- from the feed; 0 if undated
     sent_at         INTEGER,               -- NULL until delivered to user
     UNIQUE (user_id, article_url)
 );

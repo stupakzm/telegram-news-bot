@@ -193,3 +193,32 @@ def test_format_relevance_tiebreak_alphabetical():
     # Equal counts → alphabetical by lowercased keyword
     out = format_relevance({"Zebra": 2, "Apple": 2})
     assert out == "Apple-2, Zebra-2"
+
+
+# --- distinct-keyword breadth ----------------------------------------------
+
+def test_distinct_keywords_beat_one_keyword_repeated():
+    # Three different terms is a stronger signal than one term three times.
+    broad, bd_broad = score_article(
+        "GPU news", "NVIDIA shipped CUDA updates.", ["NVIDIA", "CUDA", "GPU"],
+    )
+    narrow, bd_narrow = score_article(
+        "GPU news", "GPU and GPU again.", ["NVIDIA", "CUDA", "GPU"],
+    )
+    assert len(bd_broad) == 3 and len(bd_narrow) == 1
+    assert broad > narrow
+
+
+def test_single_keyword_gets_no_diversity_bonus():
+    # One distinct match must be scored exactly as before the bonus existed.
+    import math
+    from delivery.scoring import _TITLE_WEIGHT, _SCORE_SCALE
+    score, _ = score_article("Tesla", "Tesla", ["Tesla"])
+    expected = _TITLE_WEIGHT * math.log2(2) + math.log2(2)
+    assert score == round(expected * _SCORE_SCALE)
+
+
+def test_diversity_bonus_scales_with_distinct_count():
+    two, _ = score_article("a", "NVIDIA CUDA", ["NVIDIA", "CUDA", "GPU"])
+    three, _ = score_article("a", "NVIDIA CUDA GPU", ["NVIDIA", "CUDA", "GPU"])
+    assert three > two

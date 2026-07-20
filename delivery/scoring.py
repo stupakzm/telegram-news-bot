@@ -25,6 +25,11 @@ _TITLE_WEIGHT = 3
 # without collapsing distinct rankings onto the same value.
 _SCORE_SCALE = 10
 
+# An article hitting NVIDIA + CUDA + GPU is a far better match than one saying
+# "GPU" three times, but plain addition scores those identically. Each keyword
+# beyond the first lifts the total by this fraction.
+_DIVERSITY_BONUS = 0.25
+
 # Deliberately minimal and unambiguous. "AI" expands ONLY to artificial
 # intelligence — machine learning belongs to its own keyword, "ML".
 _ALIASES = {
@@ -65,6 +70,11 @@ def score_article(title: str, body: str, keywords: list[str]) -> tuple[int, dict
 
         breakdown[kw_stripped] = raw
         total += _TITLE_WEIGHT * math.log2(1 + in_title) + math.log2(1 + in_body)
+
+    # Breadth of match, not just depth.
+    distinct = len(breakdown)
+    if distinct > 1:
+        total *= 1 + _DIVERSITY_BONUS * (distinct - 1)
 
     return round(total * _SCORE_SCALE), breakdown
 

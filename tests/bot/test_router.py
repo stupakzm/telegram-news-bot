@@ -73,7 +73,11 @@ def test_router_dispatches_timezone(mock_handle, _rl, _em):
     assert mock_handle.called
 
 
-def test_router_ignores_unknown_command():
+@patch("bot.router.check_rate_limit", return_value=(True, 0))
+def test_router_ignores_unknown_command(mock_rl):
+    # check_rate_limit runs before the command lookup, so without this patch the
+    # test makes a real request to the placeholder TURSO_URL and blocks for the
+    # full 30s read timeout.
     from bot.router import handle_update
     # Should not raise
     handle_update(_msg_update("/unknowncommand"))
