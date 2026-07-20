@@ -35,6 +35,7 @@ from delivery.scheduler import (
     cleanup_seen_articles,
     check_expiry_reminders,
 )
+from delivery.extract import fetch_article_text, feed_ships_stubs
 from delivery.fetcher import fetch_today_articles
 from delivery.scoring import score_article, format_relevance
 from delivery.ai import summarize_articles
@@ -50,6 +51,10 @@ from delivery.personalize import (
 # per-thread sleep, so many workers can't collectively exceed Telegram's rate.
 _MAX_USER_WORKERS = 5          # concurrent users; env DELIVERY_MAX_WORKERS
 _FEED_FETCH_WORKERS = 4        # concurrent feed fetches per user; env DELIVERY_FEED_WORKERS
+
+# Cap on scraped article text used for scoring. Never stored, never sent to the
+# AI — it only ever feeds the keyword matcher.
+_MAX_SCORING_CHARS = 20000
 
 # How many random fresh articles to send a user who has feeds but no keywords.
 _RANDOM_SAMPLE_SIZE = 3
@@ -315,6 +320,7 @@ def _deliver_user(user: dict, now_utc: datetime) -> dict:
             fetch_errors.append((feed_url, f"{type(result).__name__}: {result}"))
             continue
 
+        stub_feed = feed_ships_stubs(feed_url)
         for article in result:
             url = article["url"]
             if url in recent_sent or url in seen_urls:
@@ -322,15 +328,27 @@ def _deliver_user(user: dict, now_utc: datetime) -> dict:
             title_words = _title_words(article["title"])
             if any(_titles_similar(title_words, prev) for prev in seen_title_words):
                 continue
-            score, breakdown = score_article(article["title"], article["body"], keywords)
+            body = article["body"]
+            # Stub-body feeds (HN ships "Comments") would otherwise be scored on
+            # their title alone. Score against the real article text, but keep
+            # the short feed body for storage and the AI prompt so token spend
+            # is unchanged.
+            scoring_body = body
+            if stub_feed:
+                full = fetch_article_text(url, _MAX_SCORING_CHARS)
+                if full:
+                    scoring_body = full
+
+            score, breakdown = score_article(article["title"], scoring_body, keywords)
             new_rows.append((
                 "INSERT OR IGNORE INTO seen_articles "
                 "(user_id, feed_url, article_url, article_title, article_body, "
-                "score, match_breakdown, fetched_at, sent_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL)",
+                "score, match_breakdown, fetched_at, published_at, sent_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)",
                 [
                     user_id, feed_url, url, article["title"], article["body"],
                     score, json.dumps(breakdown), now_ts,
+                    article.get("published_at") or 0,
                 ],
             ))
             seen_urls.add(url)
@@ -346,7 +364,9 @@ def _deliver_user(user: dict, now_utc: datetime) -> dict:
         "SELECT id, feed_url, article_url, article_title, article_body, score, match_breakdown "
         "FROM seen_articles "
         "WHERE user_id = ? AND sent_at IS NULL AND score > 0 "
-        "ORDER BY score DESC",
+        # Equal-scoring articles used to tie arbitrarily; prefer the fresher one.
+        # published_at is 0 for undated entries, so those sort last within a tie.
+        "ORDER BY score DESC, published_at DESC",
         [user_id],
     )
 
