@@ -202,3 +202,75 @@ def test_strips_html_entities(mock_validate, mock_get, mock_parse):
     out = fetch_today_articles("https://feed.example/rss", 0)
     assert out[0]["title"] == "M&S launch"
     assert out[0]["body"] == "Apple & Google partner"
+
+
+@patch("delivery.fetcher._time.sleep")
+@patch("delivery.fetcher.feedparser.parse")
+@patch("delivery.fetcher.requests.get")
+@patch("delivery.fetcher.validate_rss_url", return_value=True)
+def test_retries_transient_read_timeout(mock_validate, mock_get, mock_parse, mock_sleep):
+    # a single ReadTimeout used to drop the feed for the whole run
+    import requests as _rq
+    mock_get.side_effect = [_rq.exceptions.ReadTimeout("read timed out"), _fake_resp()]
+    parsed = MagicMock()
+    parsed.entries = [
+        _fake_entry("https://example.com/x", "fresh", summary="body",
+                    published=time.gmtime(int(time.time()))),
+    ]
+    mock_parse.return_value = parsed
+
+    from delivery.fetcher import fetch_today_articles
+    out = fetch_today_articles("https://feed.example/rss", 0)
+    assert [a["url"] for a in out] == ["https://example.com/x"]
+    assert mock_get.call_count == 2
+
+
+@patch("delivery.fetcher._time.sleep")
+@patch("delivery.fetcher.requests.get")
+@patch("delivery.fetcher.validate_rss_url", return_value=True)
+def test_gives_up_after_max_attempts(mock_validate, mock_get, mock_sleep):
+    import requests as _rq
+    import pytest
+    mock_get.side_effect = _rq.exceptions.ReadTimeout("read timed out")
+
+    from delivery.fetcher import fetch_today_articles, _RETRY_ATTEMPTS
+    with pytest.raises(_rq.exceptions.ReadTimeout):
+        fetch_today_articles("https://feed.example/rss", 0)
+    assert mock_get.call_count == _RETRY_ATTEMPTS
+
+
+@patch("delivery.fetcher._time.sleep")
+@patch("delivery.fetcher.feedparser.parse")
+@patch("delivery.fetcher.requests.get")
+@patch("delivery.fetcher.validate_rss_url", return_value=True)
+def test_retries_server_error_status(mock_validate, mock_get, mock_parse, mock_sleep):
+    flaky = _fake_resp()
+    flaky.status_code = 503
+    ok = _fake_resp()
+    ok.status_code = 200
+    mock_get.side_effect = [flaky, ok]
+    parsed = MagicMock()
+    parsed.entries = []
+    parsed.bozo = 0
+    mock_parse.return_value = parsed
+
+    from delivery.fetcher import fetch_today_articles
+    assert fetch_today_articles("https://feed.example/rss", 0) == []
+    assert mock_get.call_count == 2
+
+
+@patch("delivery.fetcher._time.sleep")
+@patch("delivery.fetcher.requests.get")
+@patch("delivery.fetcher.validate_rss_url", return_value=True)
+def test_does_not_retry_permanent_404(mock_validate, mock_get, mock_sleep):
+    import requests as _rq
+    import pytest
+    dead = _fake_resp()
+    dead.status_code = 404
+    dead.raise_for_status.side_effect = _rq.exceptions.HTTPError("404 Not Found")
+    mock_get.return_value = dead
+
+    from delivery.fetcher import fetch_today_articles
+    with pytest.raises(_rq.exceptions.HTTPError):
+        fetch_today_articles("https://feed.example/rss", 0)
+    assert mock_get.call_count == 1
