@@ -3,6 +3,7 @@ import calendar
 import html
 import logging
 import re
+import time as _time
 
 import feedparser
 import requests
@@ -15,8 +16,16 @@ _HTML_TAG_RE = re.compile(r"<[^>]+>")
 _WHITESPACE_RE = re.compile(r"\s+")
 
 _MAX_BODY_CHARS = 8000          # caps DB row size and AI prompt cost
-_FETCH_TIMEOUT_SECONDS = 8
+# (connect, read): a feed host that answers at all is usually fast, but public
+# RSS endpoints stall for seconds under load, so allow a generous read window.
+_FETCH_TIMEOUT_SECONDS = (5, 20)
 _USER_AGENT = "newsbot/1.0 (+https://t.me/)"
+
+# One transient blip used to drop a feed for the whole hourly run (and, for a
+# single-feed user, mean no delivery at all). Retry like db/client.py does.
+_RETRY_ATTEMPTS = 3
+_RETRY_BACKOFF = [1, 3]         # seconds before attempt 2, 3
+_RETRYABLE_STATUS = frozenset({429, 500, 502, 503, 504})
 
 
 class FeedParseError(Exception):
@@ -57,6 +66,43 @@ def _entry_timestamp(entry) -> int | None:
     return None
 
 
+def _get_with_retry(feed_url: str) -> requests.Response:
+    """GET a feed, retrying transient transport errors and 429/5xx responses.
+
+    Permanent failures (404, 410, bad TLS...) raise on the first attempt so a
+    genuinely dead feed still surfaces in delivery_errors promptly.
+    """
+    last_exc: Exception | None = None
+    for attempt in range(_RETRY_ATTEMPTS):
+        try:
+            resp = requests.get(
+                feed_url,
+                timeout=_FETCH_TIMEOUT_SECONDS,
+                headers={"User-Agent": _USER_AGENT},
+            )
+            if resp.status_code in _RETRYABLE_STATUS and attempt < len(_RETRY_BACKOFF):
+                last_exc = requests.exceptions.HTTPError(
+                    f"{resp.status_code} from {feed_url}", response=resp
+                )
+            else:
+                resp.raise_for_status()
+                return resp
+        except (requests.exceptions.Timeout,
+                requests.exceptions.ConnectionError,
+                requests.exceptions.ChunkedEncodingError) as exc:
+            last_exc = exc
+            if attempt >= len(_RETRY_BACKOFF):
+                raise
+
+        logger.info(
+            "feed fetch attempt %d/%d failed for %s: %s",
+            attempt + 1, _RETRY_ATTEMPTS, feed_url, last_exc,
+        )
+        _time.sleep(_RETRY_BACKOFF[attempt])
+
+    raise last_exc
+
+
 def fetch_today_articles(feed_url: str, today_start_ts: int) -> list[dict]:
     """
     Fetch a feed and return entries dated on/after today_start_ts.
@@ -72,12 +118,7 @@ def fetch_today_articles(feed_url: str, today_start_ts: int) -> list[dict]:
         logger.warning("fetch_today_articles: blocked unsafe URL %s", feed_url)
         return []
 
-    resp = requests.get(
-        feed_url,
-        timeout=_FETCH_TIMEOUT_SECONDS,
-        headers={"User-Agent": _USER_AGENT},
-    )
-    resp.raise_for_status()
+    resp = _get_with_retry(feed_url)
 
     parsed = feedparser.parse(resp.content)
 

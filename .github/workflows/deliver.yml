@@ -8,6 +8,10 @@ on:
 jobs:
   deliver:
     runs-on: ubuntu-latest
+    # The cron fires hourly, so a run must never outlive its slot. Feed fetches
+    # retry up to ~64s each on a degraded host; concurrency bounds that in
+    # practice, but this is the hard stop if it doesn't.
+    timeout-minutes: 30
 
     steps:
       - name: Checkout
