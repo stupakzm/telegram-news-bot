@@ -153,9 +153,20 @@ def _is_word_char(ch: str) -> bool:
     return ch.isalnum() or ch == "_"
 
 
+# Show at most this many keywords on the 🎯 line — the top few carry the signal;
+# a long tail of single hits just reads like debug output.
+_MAX_RELEVANCE_KEYWORDS = 3
+
+
 def format_relevance(breakdown: dict[str, int]) -> str:
-    """Render breakdown as 'Tesla-12, Autopilot-8, NHTSA-5' (sorted by count desc)."""
+    """Render breakdown as 'Tesla-12, Autopilot-8, NHTSA' (sorted by count desc).
+
+    Only the top few keywords are shown, and a count of 1 is dropped entirely —
+    "-1" carries no ranking information and just adds noise, so a keyword that
+    matched once appears bare.
+    """
     if not breakdown:
         return ""
     sorted_kws = sorted(breakdown.items(), key=lambda kv: (-kv[1], kv[0].lower()))
-    return ", ".join(f"{kw}-{count}" for kw, count in sorted_kws)
+    top = sorted_kws[:_MAX_RELEVANCE_KEYWORDS]
+    return ", ".join(kw if count == 1 else f"{kw}-{count}" for kw, count in top)

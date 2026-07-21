@@ -66,21 +66,28 @@ these keys:
 
 - "url": copied unchanged from the matching input element
 - "title": copied unchanged from the matching input element
-- "summary": 2-3 sentences. Direct, factual — state what happened, key details, \
-why it matters. No filler like "In this article", "The author discusses", "This \
-piece covers", or other meta-references to the article itself. Write about the \
-news, not about the article.
-- "is_important": true if the article has significant real-world impact worth a \
-deeper explanation — major regulation/policy change, market-moving event, \
-critical security breach or zero-day, significant AI model/product release, \
-major OSS milestone, notable acquisition or shutdown, important research \
-breakthrough. Use true generously for anything a developer or tech reader would \
-want to understand in depth; false for routine updates and minor news.
-- "importance_detail": if is_important true, 2-3 sentences of concrete context \
-(what changed, who is affected, consequences); else empty string ""
+- "summary": 2-3 sentences. Direct, factual, NEUTRAL — state what happened, key \
+details, why it matters. Report objectively: strip vendor hype and superlatives \
+("revolutionary", "unprecedented", "game-changing", "blazing-fast", "seamless") \
+and attribute promotional claims to their source ("NVIDIA says...", "the company \
+claims...") rather than asserting them as fact. No filler like "In this article", \
+"The author discusses", "This piece covers", or other meta-references to the \
+article itself. Write about the news, not about the article.
+- "is_important": true ONLY if the article has significant, concrete real-world \
+impact worth a deeper explanation — major regulation/policy change, market-moving \
+event, critical security breach or zero-day, significant AI model/product \
+release, major OSS milestone, notable acquisition or shutdown, important research \
+breakthrough. Be selective: routine updates, incremental vendor announcements, \
+and minor news are false.
+- "importance_detail": only when is_important is true, 2-3 sentences that add NEW \
+information NOT already in the summary — a concrete number, a named second-order \
+consequence, or specifically who is affected and how. If you can only restate or \
+rephrase the summary, set is_important to false and return "" here.
 - "skip": true if the article is affiliate marketing, sponsored content, a \
 product promotion/review written to sell something, or has no real news value; \
-false otherwise.
+false otherwise. ALSO set skip true when several provided articles cover the SAME \
+underlying event or announcement — keep only the single most informative one and \
+mark the other near-duplicates skip true.
 
 Return ONLY a valid JSON array. No markdown fences, no explanation.
 

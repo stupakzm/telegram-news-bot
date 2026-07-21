@@ -181,8 +181,9 @@ def test_it_matches_real_it_usage():
 # --- formatting (unchanged) ------------------------------------------------
 
 def test_format_relevance_sorts_by_count_descending():
+    # Count of 1 renders bare (no "-1" noise); higher counts keep their number.
     out = format_relevance({"Tesla": 3, "Autopilot": 8, "NHTSA": 1})
-    assert out == "Autopilot-8, Tesla-3, NHTSA-1"
+    assert out == "Autopilot-8, Tesla-3, NHTSA"
 
 
 def test_format_relevance_empty_returns_empty_string():
@@ -193,6 +194,16 @@ def test_format_relevance_tiebreak_alphabetical():
     # Equal counts → alphabetical by lowercased keyword
     out = format_relevance({"Zebra": 2, "Apple": 2})
     assert out == "Apple-2, Zebra-2"
+
+
+def test_format_relevance_drops_count_of_one():
+    # A keyword that matched once appears bare — "-1" carries no signal.
+    assert format_relevance({"GPU": 1, "kernel": 1, "Linux": 1}) == "GPU, kernel, Linux"
+
+
+def test_format_relevance_caps_at_three_keywords():
+    out = format_relevance({"A": 9, "B": 8, "C": 7, "D": 6, "E": 5})
+    assert out == "A-9, B-8, C-7"
 
 
 # --- distinct-keyword breadth ----------------------------------------------

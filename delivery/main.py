@@ -58,6 +58,10 @@ _MAX_SCORING_CHARS = 20000
 
 # How many random fresh articles to send a user who has feeds but no keywords.
 _RANDOM_SAMPLE_SIZE = 3
+# Cap on "why this matters" follow-ups per digest. The AI now fires is_important
+# selectively, but a busy slot could still flag several; keep the reader from
+# being buried in follow-ups by sending only the top few (highest-ranked first).
+_MAX_IMPORTANCE_FOLLOWUPS = 2
 # Sentinel article_url marking a "nothing matched" note in delivery_log, used to
 # rate-limit the quiet-day note to once per user per local day.
 _QUIET_SENTINEL = "__quiet__"
@@ -243,6 +247,7 @@ def _deliver_random_no_keywords(user: dict, now_utc: datetime, feeds: list[str])
 
     sent = 0
     failed = 0
+    followups_sent = 0
     update_stmts: list[tuple] = []
 
     for pick in picks:
@@ -256,10 +261,14 @@ def _deliver_random_no_keywords(user: dict, now_utc: datetime, feeds: list[str])
             "is_important": ai.get("is_important"),
             "importance_detail": ai.get("importance_detail", ""),
             "relevance": "",  # no keywords → no relevance line
+            "published_at": pick.get("published_at") or 0,
         }
+        allow_followup = followups_sent < _MAX_IMPORTANCE_FOLLOWUPS
         try:
-            post_article(user_id=user_id, article=article)
+            post_article(user_id=user_id, article=article, allow_followup=allow_followup)
             sent += 1
+            if allow_followup and article["is_important"] and article["importance_detail"]:
+                followups_sent += 1
             update_stmts.append((
                 "INSERT INTO delivery_log (user_id, article_url, status, sent_at) "
                 "VALUES (?, ?, 'sent', ?)",
@@ -361,7 +370,8 @@ def _deliver_user(user: dict, now_utc: datetime) -> dict:
             logger.error("Failed to insert seen_articles for %d: %s", user_id, e)
 
     pool = db.execute(
-        "SELECT id, feed_url, article_url, article_title, article_body, score, match_breakdown "
+        "SELECT id, feed_url, article_url, article_title, article_body, score, "
+        "       match_breakdown, published_at "
         "FROM seen_articles "
         "WHERE user_id = ? AND sent_at IS NULL AND score > 0 "
         # Equal-scoring articles used to tie arbitrarily; prefer the fresher one.
@@ -397,6 +407,7 @@ def _deliver_user(user: dict, now_utc: datetime) -> dict:
 
     sent = 0
     failed = 0
+    followups_sent = 0
     update_stmts: list[tuple] = []
 
     for s in selected:
@@ -415,10 +426,14 @@ def _deliver_user(user: dict, now_utc: datetime) -> dict:
             "is_important": ai.get("is_important"),
             "importance_detail": ai.get("importance_detail", ""),
             "relevance": format_relevance(breakdown),
+            "published_at": s["published_at"],
         }
+        allow_followup = followups_sent < _MAX_IMPORTANCE_FOLLOWUPS
         try:
-            post_article(user_id=user_id, article=article)
+            post_article(user_id=user_id, article=article, allow_followup=allow_followup)
             sent += 1
+            if allow_followup and article["is_important"] and article["importance_detail"]:
+                followups_sent += 1
             update_stmts.append((
                 "UPDATE seen_articles SET sent_at = ? WHERE id = ?",
                 [now_ts, s["id"]],
