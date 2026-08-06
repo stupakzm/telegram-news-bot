@@ -38,6 +38,7 @@ _NEW_TABLES = [
     "bot_messages",
     "article_reactions",
     "rate_limit_log",
+    "run_state",
 ]
 
 

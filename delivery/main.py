@@ -34,6 +34,9 @@ from delivery.scheduler import (
     user_today_start_utc_ts,
     cleanup_seen_articles,
     check_expiry_reminders,
+    covered_slots,
+    get_last_successful_run,
+    record_successful_run,
 )
 from delivery.extract import fetch_article_text, feed_ships_stubs
 from delivery.fetcher import fetch_today_articles
@@ -488,16 +491,26 @@ def run() -> None:
     run_start = time.monotonic()
     workers = _max_user_workers()
     msgs_cap = os.environ.get("TELEGRAM_MAX_MSGS_PER_SEC", "25")
+    slots = covered_slots(now_utc, get_last_successful_run())
     logger.info(
-        "run start hour_utc=%d workers=%d feed_workers=%d msgs_per_sec_cap=%s",
-        now_utc.hour, workers, _feed_fetch_workers(), msgs_cap,
+        "run start hour_utc=%d slots=%s workers=%d feed_workers=%d msgs_per_sec_cap=%s",
+        now_utc.hour, [s.hour for s in slots], workers, _feed_fetch_workers(), msgs_cap,
     )
 
-    due = get_due_users(now_utc)
+    # No slots means an earlier run already covered this hour — a second trigger
+    # for the same slot must not re-deliver.
+    if not slots:
+        logger.info("run skip: hour already covered by an earlier run")
+        check_expiry_reminders()
+        cleanup_seen_articles()
+        return
+
+    due = get_due_users(now_utc, slots)
     if not due:
         logger.info("run skip: no users due this hour")
         check_expiry_reminders()
         cleanup_seen_articles()
+        record_successful_run(now_utc)
         return
 
     logger.info("processing %d due user(s)", len(due))
@@ -511,12 +524,16 @@ def run() -> None:
     duration = time.monotonic() - run_start
     logger.info(
         "run complete users=%d sent=%d failed=%d errors=%d duration=%.1fs "
-        "workers=%d msgs_per_sec_cap=%s",
-        len(due), sent_total, failed_total, errors_total, duration, workers, msgs_cap,
+        "workers=%d msgs_per_sec_cap=%s slots=%d",
+        len(due), sent_total, failed_total, errors_total, duration, workers,
+        msgs_cap, len(slots),
     )
 
     check_expiry_reminders()
     cleanup_seen_articles()
+    # Only reached if the run got through delivery; a crash leaves the slot
+    # unrecorded so the next run backfills it.
+    record_successful_run(now_utc)
 
 
 if __name__ == "__main__":

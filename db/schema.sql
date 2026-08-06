@@ -110,3 +110,9 @@ CREATE TABLE IF NOT EXISTS rate_limit_log (
 
 CREATE INDEX IF NOT EXISTS idx_rate_limit_log_user_time
     ON rate_limit_log(user_id, occurred_at DESC);
+
+CREATE TABLE IF NOT EXISTS run_state (
+    key        TEXT    PRIMARY KEY,        -- 'last_successful_run'
+    value      INTEGER NOT NULL,           -- Unix ts of the hour slot covered
+    updated_at INTEGER NOT NULL
+);

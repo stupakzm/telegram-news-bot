@@ -2,7 +2,7 @@
 import logging
 import os
 import time
-from datetime import datetime, timezone as _utc
+from datetime import datetime, timedelta, timezone as _utc
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import requests
@@ -20,6 +20,20 @@ TIER_HOURS = {
 
 # Pool retention window — seen_articles older than this get pruned each run.
 SEEN_RETENTION_SECONDS = 24 * 3600
+
+# Slot catch-up. A run covers every hourly slot since the last successful run,
+# so a tick that GitHub drops (no hosted runner acquired) or fires late doesn't
+# silently cost a user their digest. Capped so that a long outage backfills the
+# recent slots rather than replaying a whole day of them.
+MAX_CATCHUP_HOURS = 6
+
+_RUN_STATE_DDL = (
+    "CREATE TABLE IF NOT EXISTS run_state ("
+    "key TEXT PRIMARY KEY, "
+    "value INTEGER NOT NULL, "
+    "updated_at INTEGER NOT NULL)"
+)
+_LAST_RUN_KEY = "last_successful_run"
 
 # Expiry-reminder settings. Paid plans get a 3-day heads-up to renew; trial
 # users get a single final-day nudge to pick a plan.
@@ -70,11 +84,81 @@ def _user_local_hour(user_tz: str | None, now_utc: datetime) -> int:
     return now_utc.astimezone(tz).hour
 
 
-def get_due_users(now_utc: datetime) -> list[dict]:
+def _floor_hour(dt: datetime) -> datetime:
+    return dt.replace(minute=0, second=0, microsecond=0)
+
+
+def get_last_successful_run() -> int | None:
+    """Unix ts of the slot covered by the last completed run, or None if unknown.
+
+    The table is created on read so this needs no separate migration step —
+    init_db.py is destructive and must not be run against live data.
     """
-    Return active users whose current local hour matches one of their tier's
-    scheduled delivery hours. Auto-expires any user whose tier_expires_at passed.
+    try:
+        db.execute_many([(_RUN_STATE_DDL, [])])
+        rows = db.execute(
+            "SELECT value FROM run_state WHERE key = ?", [_LAST_RUN_KEY]
+        )
+        return rows[0]["value"] if rows else None
+    except Exception as e:
+        # Falling back to None means "cover only the current slot" — the old
+        # behavior, and the safe direction to fail in.
+        logger.warning("run_state read failed, skipping catch-up: %s", e)
+        return None
+
+
+def record_successful_run(now_utc: datetime) -> None:
+    """Mark this run's slot as covered so the next run doesn't repeat it."""
+    try:
+        db.execute_many([
+            (_RUN_STATE_DDL, []),
+            (
+                "INSERT INTO run_state (key, value, updated_at) VALUES (?, ?, ?) "
+                "ON CONFLICT(key) DO UPDATE SET value = excluded.value, "
+                "updated_at = excluded.updated_at",
+                [
+                    _LAST_RUN_KEY,
+                    int(_floor_hour(now_utc).timestamp()),
+                    int(now_utc.timestamp()),
+                ],
+            ),
+        ])
+    except Exception as e:
+        logger.warning("run_state write failed: %s", e)
+
+
+def covered_slots(now_utc: datetime, last_run_ts: int | None) -> list[datetime]:
     """
+    The hourly slot instants this run is responsible for: every slot after the
+    last successful run, up to and including this one, oldest first.
+
+    Flooring to the hour absorbs GitHub's cron drift — a tick that fires at
+    17:56 covers the 17:00 slot rather than being read as a 17:00-hour run that
+    was really meant for 18:00. An empty list means this slot is already covered
+    by an earlier run, which is how a duplicate trigger gets deduplicated.
+    """
+    current = _floor_hour(now_utc)
+    if last_run_ts is None:
+        return [current]
+    last = _floor_hour(datetime.fromtimestamp(last_run_ts, tz=_utc.utc))
+    if last >= current:
+        return []
+    gap = int((current - last).total_seconds() // 3600)
+    span = min(gap, MAX_CATCHUP_HOURS)
+    return [current - timedelta(hours=i) for i in range(span - 1, -1, -1)]
+
+
+def get_due_users(now_utc: datetime, slots: list[datetime] | None = None) -> list[dict]:
+    """
+    Return active users whose local hour, at any slot this run covers, matches
+    one of their tier's scheduled delivery hours. Auto-expires any user whose
+    tier_expires_at passed.
+
+    A user due at several covered slots is still returned once: a backfilled run
+    delivers their digest late, it does not send one digest per missed slot.
+    """
+    if slots is None:
+        slots = covered_slots(now_utc, get_last_successful_run())
     rows = db.execute(
         "SELECT user_id, tier, tier_expires_at, timezone "
         "FROM users WHERE tier IN ('trial', 'vip', 'svip')"
@@ -94,8 +178,7 @@ def get_due_users(now_utc: datetime) -> list[dict]:
             continue
 
         hours = TIER_HOURS.get(row["tier"], ())
-        local_hour = _user_local_hour(row["timezone"], now_utc)
-        if local_hour in hours:
+        if any(_user_local_hour(row["timezone"], slot) in hours for slot in slots):
             due.append(row)
 
     if expired:

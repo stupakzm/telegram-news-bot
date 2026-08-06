@@ -2,8 +2,18 @@ name: Deliver News Digests
 
 on:
   schedule:
-    - cron: "0 * * * *"   # every hour on the hour (UTC)
-  workflow_dispatch:        # allow manual trigger
+    # Backstop only. GitHub runs this best-effort and routinely fires it up to
+    # an hour late; the on-the-hour workflow_dispatch is the primary trigger.
+    # Late/duplicate ticks are safe — the run floors to its hour slot and skips
+    # a slot an earlier run already covered.
+    - cron: "0 * * * *"
+  workflow_dispatch:        # primary trigger (external hourly dispatch) + manual
+
+# One delivery at a time. The cron backstop and the hourly dispatch can
+# otherwise overlap and evaluate different hours against the same users.
+concurrency:
+  group: deliver
+  cancel-in-progress: false
 
 jobs:
   deliver:
